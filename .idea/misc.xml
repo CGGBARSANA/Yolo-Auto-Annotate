@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="C:\Conda3" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="autotate" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="autotate_env" project-jdk-type="Python SDK" />
 </project>

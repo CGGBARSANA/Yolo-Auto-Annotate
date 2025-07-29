@@ -72,7 +72,7 @@ class ImageThumbnail(QLabel):
                 }
             """)
         else:
-            color = "#90EE90" if self.is_annotated else "#ccc"
+            color = "#00ff04" if self.is_annotated else "#ccc"
             self.setStyleSheet(f"""
                 QLabel {{
                     border: 2px solid {color};
@@ -129,9 +129,9 @@ class Annotator(QWidget):
         self.annotated_images = set()  # Track which images have been annotated
         self.has_unsaved_changes = False  # Track if current annotation has unsaved changes
 
-        self.model = YOLO(r"C:\Users\BARSANA FAMILY\Documents\Projects\autotate\models\yolo11n.pt")
-        self.label_dir = r"C:\Users\BARSANA FAMILY\Documents\Projects\autotate\labels"
-        self.annotation_save_dir = r"C:\Users\BARSANA FAMILY\Documents\Projects\autotate\saved_annotations"
+        self.model = YOLO(r"C:\Users\Nyuu Sutairu IT Dep\Desktop\cleaned\autotate\models\large.pt")
+        self.label_dir = r"C:\Users\Nyuu Sutairu IT Dep\Desktop\cleaned\autotate\labels"
+        self.annotation_save_dir = r"C:\Users\Nyuu Sutairu IT Dep\Desktop\cleaned\autotate\saved_annotations"
         os.makedirs(self.label_dir, exist_ok=True)
         os.makedirs(self.annotation_save_dir, exist_ok=True)
 
@@ -440,6 +440,14 @@ class Annotator(QWidget):
             # Display label (custom or original class name)
             if i in self.box_labels:
                 label_text = self.box_labels[i]
+                # if i in self.box_labels:
+                # custom_label = self.box_labels[i]
+                # cls = None
+                self.label_combo.setCurrentText(label_text)
+                for idx, name in self.class_names.items():
+                    if name == label_text:
+                        det["cls"] = idx
+                        break
             else:
                 label_text = f"{self.class_names[cls]}"
 
@@ -519,7 +527,9 @@ class Annotator(QWidget):
 
         self.has_unsaved_changes = True
         self.display_image()
-        QMessageBox.information(self, "Success", f"Assigned label '{label_text}' to {len(self.selected_boxes)} boxes.")
+
+        self.save_annotations()
+        # QMessageBox.information(self, "Success", f"Assigned label '{label_text}' to {len(self.selected_boxes)} boxes.")
 
     def select_all_boxes(self):
         self.selected_boxes = set(range(len(self.detections)))
@@ -558,9 +568,9 @@ class Annotator(QWidget):
         self.update_thumbnail_states()
         self.update_status()
 
-        img_name = os.path.splitext(os.path.basename(self.image_paths[self.current_index]))[0]
-        QMessageBox.information(self, "Saved",
-                                f"Annotation saved for {img_name} with {len(self.selected_boxes)} boxes.")
+        # img_name = os.path.splitext(os.path.basename(self.image_paths[self.current_index]))[0]
+        # QMessageBox.information(self, "Saved",
+        #                         f"Annotation saved for {img_name} with {len(self.selected_boxes)} boxes.")
 
     def save_yolo_format(self):
         """Save annotations in YOLO format"""
@@ -573,14 +583,20 @@ class Annotator(QWidget):
             for i in self.selected_boxes:
                 det = self.detections[i]
                 x1, y1, x2, y2 = det["box"]
+                print(i)
 
-                # Use custom label if assigned, otherwise use original class
+                # Determine class index
                 if i in self.box_labels:
-                    # For custom labels, you might want to maintain a mapping
-                    # For now, using original class index
-                    cls = det["cls"]
+                    custom_label = self.box_labels[i]
+                    cls = None
+                    for idx, name in self.class_names.items():
+                        if name == custom_label:
+                            cls = idx
+                            break
+                    print("LABEL in IF", cls, "|", self.box_labels, "|", det, "|")
                 else:
                     cls = det["cls"]
+                    print("LABEL in Else", cls)
 
                 # Convert to YOLO format (normalized)
                 cx = (x1 + x2) / 2 / w
@@ -625,6 +641,7 @@ class Annotator(QWidget):
         if self.has_unsaved_changes and self.detections:
             if self.save_current_annotation():
                 print(f"Auto-saved annotation for image {self.current_index + 1}")
+                self.save_annotations()
 
     def load_previous_annotation(self):
         """Load previous annotation if exists"""
@@ -726,23 +743,13 @@ class Annotator(QWidget):
                                 bw = (x2 - x1) / w
                                 bh = (y2 - y1) / h
                                 f.write(f"{cls} {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}\n")
-
                         exported_count += 1
-
-                    # Restore original index
                     self.current_index = old_index
-
             QMessageBox.information(self, "Export Complete",
                                     f"Exported {exported_count} annotation files to:\n{export_dir}")
-
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Error during export: {e}")
 
-    def closeEvent(self, event):
-        """Handle application closing - auto-save if enabled"""
-        if self.auto_save_enabled and self.has_unsaved_changes and self.detections:
-            self.auto_save_current_annotation()
-        event.accept()
 
 
 if __name__ == "__main__":
