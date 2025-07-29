@@ -1,0 +1,26 @@
+{
+  "image_path": "C:/Users/BARSANA FAMILY/Pictures/Camera Roll/WIN_20250301_18_25_28_Pro.jpg",
+  "detections": [
+    {
+      "cls": 0,
+      "conf": 0.9329965114593506,
+      "box": [
+        131,
+        59,
+        635,
+        478
+      ],
+      "area": 211176,
+      "original_index": 0
+    }
+  ],
+  "selected_boxes": [],
+  "box_labels": {
+    "0": "Nissin"
+  },
+  "original_shape": [
+    480,
+    640
+  ],
+  "timestamp": "2025-07-28T07:47:59"
+}

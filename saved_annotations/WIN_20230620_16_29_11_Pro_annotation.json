@@ -1,0 +1,48 @@
+{
+  "image_path": "C:/Users/BARSANA FAMILY/Pictures/Camera Roll/WIN_20230620_16_29_11_Pro.jpg",
+  "detections": [
+    {
+      "cls": 0,
+      "conf": 0.35993048548698425,
+      "box": [
+        11,
+        453,
+        1733,
+        1074
+      ],
+      "area": 1069362,
+      "original_index": 2
+    },
+    {
+      "cls": 0,
+      "conf": 0.4386577010154724,
+      "box": [
+        796,
+        361,
+        1914,
+        1068
+      ],
+      "area": 790426,
+      "original_index": 1
+    },
+    {
+      "cls": 0,
+      "conf": 0.6675389409065247,
+      "box": [
+        38,
+        533,
+        773,
+        1070
+      ],
+      "area": 394695,
+      "original_index": 0
+    }
+  ],
+  "selected_boxes": [],
+  "box_labels": {},
+  "original_shape": [
+    1080,
+    1920
+  ],
+  "timestamp": "2025-07-28T07:47:56"
+}

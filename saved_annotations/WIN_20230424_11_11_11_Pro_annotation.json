@@ -1,0 +1,86 @@
+{
+  "image_path": "C:/Users/BARSANA FAMILY/Pictures/Camera Roll/WIN_20230424_11_11_11_Pro.jpg",
+  "detections": [
+    {
+      "cls": 56,
+      "conf": 0.3505529463291168,
+      "box": [
+        1419,
+        275,
+        1919,
+        1067
+      ],
+      "area": 396000,
+      "original_index": 4
+    },
+    {
+      "cls": 0,
+      "conf": 0.6078453063964844,
+      "box": [
+        1421,
+        272,
+        1918,
+        1066
+      ],
+      "area": 394618,
+      "original_index": 1
+    },
+    {
+      "cls": 60,
+      "conf": 0.5734458565711975,
+      "box": [
+        608,
+        659,
+        1496,
+        1073
+      ],
+      "area": 367632,
+      "original_index": 2
+    },
+    {
+      "cls": 56,
+      "conf": 0.8279343247413635,
+      "box": [
+        482,
+        387,
+        832,
+        1069
+      ],
+      "area": 238700,
+      "original_index": 0
+    },
+    {
+      "cls": 53,
+      "conf": 0.343264102935791,
+      "box": [
+        663,
+        749,
+        1378,
+        1069
+      ],
+      "area": 228800,
+      "original_index": 5
+    },
+    {
+      "cls": 56,
+      "conf": 0.3732759356498718,
+      "box": [
+        0,
+        460,
+        352,
+        1068
+      ],
+      "area": 214016,
+      "original_index": 3
+    }
+  ],
+  "selected_boxes": [],
+  "box_labels": {
+    "1": "Nissin"
+  },
+  "original_shape": [
+    1080,
+    1920
+  ],
+  "timestamp": "2025-07-28T07:47:46"
+}
