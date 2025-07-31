@@ -1,6 +1,7 @@
 import os
 import cv2
 import json
+import shutil
 import numpy as np
 from PyQt5.QtWidgets import (
     QWidget, QPushButton, QLabel, QFileDialog, QVBoxLayout,
@@ -99,7 +100,8 @@ class Annotator(QWidget):
         # Add settings button at the top
         settings_layout = QHBoxLayout()
         self.settings_btn = QPushButton("Settings")
-        self.settings_btn.clicked.connect(self.show_settings_dialog)
+
+
         settings_layout.addWidget(self.settings_btn)
         settings_layout.addStretch()
         main_layout.addLayout(settings_layout)
@@ -112,11 +114,41 @@ class Annotator(QWidget):
         grid_layout = QVBoxLayout()
 
         # Grid controls
+
         grid_controls = QHBoxLayout()
-        self.load_btn = QPushButton("Load Images")
-        grid_controls.addWidget(self.load_btn)
+        self.add_images_btn = QPushButton("Add Images")
+        grid_controls.addWidget(self.add_images_btn)
+        # self.load_btn = QPushButton("Load Images")
+        # grid_controls.addWidget(self.load_btn)
         grid_controls.addStretch()
         grid_layout.addLayout(grid_controls)
+        # In setup_ui method, in the grid_controls section:
+
+        # In connect_signals method:
+
+        self.remove_all_btn = QPushButton("Remove All Images")
+        grid_controls.addWidget(self.remove_all_btn)
+        separator = QLabel("|")
+        separator.setStyleSheet("color: gray; font-weight: bold;")
+        grid_controls.addWidget(separator)
+
+        # Thumbnail selection controls
+        self.thumbnail_selection_label = QLabel("Selected: 0 / 0")
+        grid_controls.addWidget(self.thumbnail_selection_label)
+
+        self.select_all_thumbnails_btn = QPushButton("Select All")
+        grid_controls.addWidget(self.select_all_thumbnails_btn)
+
+        self.deselect_all_thumbnails_btn = QPushButton("Deselect All")
+        grid_controls.addWidget(self.deselect_all_thumbnails_btn)
+
+        self.remove_selected_btn = QPushButton("Remove Selected")
+        self.remove_selected_btn.setStyleSheet("QPushButton { background-color: #ffcccc; }")  # Light red background
+        grid_controls.addWidget(self.remove_selected_btn)
+
+        grid_controls.addStretch()
+        grid_layout.addLayout(grid_controls)
+        # In connect_signals method, add:
 
         # Scrollable grid area
         scroll_area = QScrollArea()
@@ -203,10 +235,12 @@ class Annotator(QWidget):
         session_layout = QVBoxLayout()
 
         self.clear_session_btn = QPushButton("Clear All Annotations")
-        self.export_labels_btn = QPushButton("Export Selected Labels")
+        # self.export_labels_btn = QPushButton("Export Selected Labels")
+        self.export_annotations_btn = QPushButton("Export Annotations")
 
         session_layout.addWidget(self.clear_session_btn)
-        session_layout.addWidget(self.export_labels_btn)
+        # session_layout.addWidget(self.export_labels_btn)
+        session_layout.addWidget(self.export_annotations_btn)
         session_group.setLayout(session_layout)
         left_panel.addWidget(session_group)
 
@@ -231,7 +265,14 @@ class Annotator(QWidget):
         self.setLayout(main_layout)
 
     def connect_signals(self):
-        self.load_btn.clicked.connect(self.load_images)
+        # self.load_btn.clicked.connect(self.load_images)
+        self.select_all_thumbnails_btn.clicked.connect(self.select_all_thumbnails)
+        self.deselect_all_thumbnails_btn.clicked.connect(self.deselect_all_thumbnails)
+        self.remove_selected_btn.clicked.connect(self.remove_selected_images)
+
+        self.settings_btn.clicked.connect(self.show_settings_dialog)
+        self.add_images_btn.clicked.connect(self.add_images)
+        self.remove_all_btn.clicked.connect(self.remove_all_images)
         self.next_btn.clicked.connect(self.show_next_image)
         self.prev_btn.clicked.connect(self.show_prev_image)
         self.save_btn.clicked.connect(self.save_annotations)
@@ -240,33 +281,34 @@ class Annotator(QWidget):
         self.deselect_all_btn.clicked.connect(self.deselect_all_boxes)
         self.auto_save_btn.clicked.connect(self.toggle_auto_save)
         self.clear_session_btn.clicked.connect(self.clear_all_annotations)
-        self.export_labels_btn.clicked.connect(self.export_selected_labels)
+        # self.export_labels_btn.clicked.connect(self.export_selected_labels)
+        self.export_annotations_btn.clicked.connect(self.export_annotations)
         self.image_label.mousePressEvent = self.handle_click
 
-    def load_images(self):
-        if not self.model:
-            QMessageBox.warning(self, "Warning", "Please configure settings first.")
-            self.show_settings_dialog()
-            return
-
-        self.class_names = self.model.names
-
-        # Populate combo box with model class names
-        self.label_combo.clear()
-        for class_name in self.class_names.values():
-            self.label_combo.addItem(class_name)
-
-        files, _ = QFileDialog.getOpenFileNames(self, "Select Images", "", "Images (*.jpg *.png *.jpeg)")
-        if files:
-            self.image_paths = files
-            self.current_index = 0
-            self.annotated_images.clear()
-            self.has_unsaved_changes = False
-            self.create_grid_thumbnails()
-            self.show_current_image()
-            self.status_label.setText(f"Loaded {len(files)} images")
-            # Switch to detail view after loading
-            self.tab_widget.setCurrentIndex(1)
+    # def load_images(self):
+    #     if not self.model:
+    #         QMessageBox.warning(self, "Warning", "Please configure settings first.")
+    #         self.show_settings_dialog()
+    #         return
+    #
+    #     self.class_names = self.model.names
+    #
+    #     # Populate combo box with model class names
+    #     self.label_combo.clear()
+    #     for class_name in self.class_names.values():
+    #         self.label_combo.addItem(class_name)
+    #
+    #     files, _ = QFileDialog.getOpenFileNames(self, "Select Images", "", "Images (*.jpg *.png *.jpeg)")
+    #     if files:
+    #         self.image_paths = files
+    #         self.current_index = 0
+    #         self.annotated_images.clear()
+    #         self.has_unsaved_changes = False
+    #         self.create_grid_thumbnails()
+    #         self.show_current_image()
+    #         self.status_label.setText(f"Loaded {len(files)} images")
+    #         # Switch to detail view after loading
+    #         self.tab_widget.setCurrentIndex(1)
 
     def create_grid_thumbnails(self):
         # Clear existing thumbnails
@@ -284,6 +326,9 @@ class Annotator(QWidget):
             thumbnail = ImageThumbnail(img_path, i)
             thumbnail.clicked.connect(self.on_thumbnail_clicked)
 
+            # Connect selection changed signal
+            thumbnail.selection_changed.connect(self.update_thumbnail_selection_ui)
+
             row = i // cols
             col = i % cols
             self.grid_layout.addWidget(thumbnail, row, col)
@@ -293,6 +338,8 @@ class Annotator(QWidget):
         if self.thumbnails:
             self.thumbnails[self.current_index].set_current(True)
 
+        # Update selection UI
+        self.update_thumbnail_selection_ui()
     def on_thumbnail_clicked(self, index):
         # Auto-save current annotation before switching if enabled
         if self.auto_save_enabled and self.image_paths and self.detections and hasattr(self, 'current_index'):
@@ -472,7 +519,6 @@ class Annotator(QWidget):
                 self.update_status()
                 break
 
-
     def assign_label_to_selected(self):
         if not self.selected_boxes:
             QMessageBox.warning(self, "Warning", "No boxes selected.")
@@ -493,8 +539,8 @@ class Annotator(QWidget):
 
         self.has_unsaved_changes = True
         self.display_image()
-
-        self.save_annotations()
+        if self.auto_save_enabled:
+            self.save_annotations()
         # QMessageBox.information(self, "Success", f"Assigned label '{label_text}' to {len(self.selected_boxes)} boxes.")
 
     def select_all_boxes(self):
@@ -667,51 +713,535 @@ class Annotator(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Error clearing annotations: {e}")
 
-    def export_selected_labels(self):
-        """Export only the final labels (YOLO format) for selected annotated images"""
+    def remove_all_images(self):
+        """Remove all loaded images from the thumbnail grid and reset the application state"""
+        if not self.image_paths:
+            QMessageBox.information(self, "Info", "No images are currently loaded.")
+            return
+
+        # Ask for confirmation
+        reply = QMessageBox.question(self, 'Remove All Images',
+                                     'Are you sure you want to remove all loaded images?\n'
+                                     'This will clear the current session but won\'t delete the actual image files.',
+                                     QMessageBox.Yes | QMessageBox.No,
+                                     QMessageBox.No)
+
+        if reply == QMessageBox.Yes:
+            try:
+                # Auto-save current annotation before clearing if enabled and there are unsaved changes
+                if self.auto_save_enabled and self.image_paths and self.detections and self.has_unsaved_changes:
+                    self.auto_save_current_annotation()
+
+                # Clear all thumbnails from the grid
+                for thumbnail in self.thumbnails:
+                    thumbnail.deleteLater()
+                self.thumbnails.clear()
+
+                # Clear the grid layout
+                for i in reversed(range(self.grid_layout.count())):
+                    child = self.grid_layout.itemAt(i).widget()
+                    if child:
+                        child.setParent(None)
+
+                # Reset all application state
+                self.image_paths = []
+                self.current_index = 0
+                self.detections = []
+                self.selected_boxes = set()
+                self.box_labels = {}
+                self.annotated_images = set()
+                self.has_unsaved_changes = False
+
+                # Clear the image display
+                self.image_label.clear()
+                self.image_label.setText("Load images to start")
+
+                # Clear the label combo box (keep only model class names)
+                self.label_combo.clear()
+                if hasattr(self, 'class_names') and self.class_names:
+                    for class_name in self.class_names.values():
+                        self.label_combo.addItem(class_name)
+
+                # Update status labels
+                self.status_label.setText("Load images to start")
+                self.selection_count_label.setText("Selected: 0")
+
+                # Switch to grid view tab
+                self.tab_widget.setCurrentIndex(0)
+
+                QMessageBox.information(self, "Complete", "All images have been removed from the session.")
+
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Error removing images: {e}")
+
+
+    def remove_loaded_images(self):
+        """Remove all loaded images from the thumbnail grid and reset the application state"""
+        if not self.image_paths:
+            QMessageBox.information(self, "Info", "No images are currently loaded.")
+            return
+
+        # # Ask for confirmation
+        # reply = QMessageBox.question(self, 'Remove All Images',
+        #                              'Are you sure you want to remove all loaded images?\n'
+        #                              'This will clear the current session but won\'t delete the actual image files.',
+        #                              QMessageBox.Yes | QMessageBox.No,
+        #                              QMessageBox.No)
+        #
+        # if reply == QMessageBox.Yes:
+        try:
+            # Auto-save current annotation before clearing if enabled and there are unsaved changes
+            if self.auto_save_enabled and self.image_paths and self.detections and self.has_unsaved_changes:
+                self.auto_save_current_annotation()
+
+            # Clear all thumbnails from the grid
+            for thumbnail in self.thumbnails:
+                thumbnail.deleteLater()
+            self.thumbnails.clear()
+
+            # Clear the grid layout
+            for i in reversed(range(self.grid_layout.count())):
+                child = self.grid_layout.itemAt(i).widget()
+                if child:
+                    child.setParent(None)
+
+            # Reset all application state
+            self.image_paths = []
+            self.current_index = 0
+            self.detections = []
+            self.selected_boxes = set()
+            self.box_labels = {}
+            self.annotated_images = set()
+            self.has_unsaved_changes = False
+
+            # Clear the image display
+            self.image_label.clear()
+            self.image_label.setText("Load images to start")
+
+            # Clear the label combo box (keep only model class names)
+            self.label_combo.clear()
+            if hasattr(self, 'class_names') and self.class_names:
+                for class_name in self.class_names.values():
+                    self.label_combo.addItem(class_name)
+
+            # Update status labels
+            self.status_label.setText("Load images to start")
+            self.selection_count_label.setText("Selected: 0")
+
+            # Switch to grid view tab
+            self.tab_widget.setCurrentIndex(0)
+
+            QMessageBox.information(self, "Complete", "All images have been removed from the session.")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error removing images: {e}")
+
+
+    # Additional method to add the button to the UI
+    def add_remove_images_button(self):
+        """Add the remove all images button to the grid controls"""
+        # This should be added to the grid_controls layout in setup_ui method
+        # Find the grid_controls layout and add:
+        self.remove_all_btn = QPushButton("Remove All Images")
+        self.remove_all_btn.clicked.connect(self.remove_all_images)
+        # grid_controls.addWidget(self.remove_all_btn)  # Add this line in setup_ui
+
+    def export_annotations(self):
+        """Export all annotated images, labels, and JSON annotations to an 'annotated_images' folder"""
         annotated_count = len([i for i in range(len(self.image_paths)) if self.has_saved_annotation(i)])
 
         if annotated_count == 0:
             QMessageBox.warning(self, "Warning", "No annotated images to export.")
             return
 
-        export_dir = QFileDialog.getExistingDirectory(self, "Select Export Directory")
-        if not export_dir:
+        # Ask user where to create the annotated_images folder
+        base_export_dir = QFileDialog.getExistingDirectory(self, "Select Directory to Create 'annotated_images' Folder")
+        if not base_export_dir:
             return
 
+        # Create the main export directory
+        export_dir = os.path.join(base_export_dir, "annotated_images")
+
         try:
+            # Create subdirectories
+            images_dir = os.path.join(export_dir, "images")
+            labels_dir = os.path.join(export_dir, "labels")
+            annotations_dir = os.path.join(export_dir, "annotations")
+
+            os.makedirs(images_dir, exist_ok=True)
+            os.makedirs(labels_dir, exist_ok=True)
+            os.makedirs(annotations_dir, exist_ok=True)
+
             exported_count = 0
+            failed_count = 0
+
             for i in range(len(self.image_paths)):
                 if self.has_saved_annotation(i):
-                    # Load annotation and save as YOLO format
-                    old_index = self.current_index
-                    self.current_index = i
+                    try:
+                        img_path = self.image_paths[i]
+                        img_name = os.path.splitext(os.path.basename(img_path))[0]
+                        img_ext = os.path.splitext(os.path.basename(img_path))[1]
 
-                    if self.load_previous_annotation():
-                        img_name = os.path.splitext(os.path.basename(self.image_paths[i]))[0]
-                        label_file = os.path.join(export_dir, f"{img_name}.txt")
+                        # Move the original image
+                        dest_img_path = os.path.join(images_dir, f"{img_name}{img_ext}")
 
-                        # Get image dimensions
-                        img = cv2.imread(self.image_paths[i])
-                        h, w = img.shape[:2]
 
-                        with open(label_file, "w") as f:
-                            for box_idx in self.selected_boxes:
-                                det = self.detections[box_idx]
-                                x1, y1, x2, y2 = det["box"]
+                        # Load annotation to get the detection data
+                        old_index = self.current_index
+                        self.current_index = i
 
-                                # Use custom label if assigned, otherwise use original class
-                                cls = det["cls"]
+                        # if self.load_previous_annotation():
+                            # Save YOLO format label file
 
-                                # Convert to YOLO format (normalized)
-                                cx = (x1 + x2) / 2 / w
-                                cy = (y1 + y2) / 2 / h
-                                bw = (x2 - x1) / w
-                                bh = (y2 - y1) / h
-                                f.write(f"{cls} {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}\n")
+                            #
+                            # # Get image dimensions
+                            # img = cv2.imread(img_path)
+                            # h, w = img.shape[:2]
+                            #
+                            # with open(label_file, "w") as f:
+                            #     for box_idx in self.selected_boxes:
+                            #         det = self.detections[box_idx]
+                            #         x1, y1, x2, y2 = det["box"]
+                            #
+                            #         # Determine class index
+                            #         if box_idx in self.box_labels:
+                            #             custom_label = self.box_labels[box_idx]
+                            #             cls = None
+                            #             for idx, name in self.class_names.items():
+                            #                 if name == custom_label:
+                            #                     cls = idx
+                            #                     break
+                            #             if cls is None:  # If custom label not found in class names
+                            #                 cls = det["cls"]
+                            #         else:
+                            #             cls = det["cls"]
+                            #
+                            #         # Convert to YOLO format (normalized)
+                            #         cx = (x1 + x2) / 2 / w
+                            #         cy = (y1 + y2) / 2 / h
+                            #         bw = (x2 - x1) / w
+                            #         bh = (y2 - y1) / h
+                            #         f.write(f"{cls} {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}\n")
+
+                            # Move the JSON annotation file
+                        annotation_file = self.get_annotation_filename(i)
+                        # if os.path.exists(labels_dir):
+                        label_file = os.path.join(labels_dir, f"{img_name}.txt")
+                        print(label_file)
+                        if os.path.exists(annotation_file):
+                            dest_annotation_path = os.path.join(annotations_dir, f"{img_name}_annotation.json")
+                            shutil.move(annotation_file, dest_annotation_path)
+
+                            dest_annotation_path = os.path.join(labels_dir, f"{img_name}.txt")
+                            path = os.path.join(self.label_dir, f"{img_name}.txt")
+                            shutil.move(path, dest_annotation_path)
+
                         exported_count += 1
-                    self.current_index = old_index
-            QMessageBox.information(self, "Export Complete",
-                                    f"Exported {exported_count} annotation files to:\n{export_dir}")
+
+                        self.current_index = old_index
+                        shutil.move(img_path, dest_img_path)
+                    except Exception as e:
+                        print(f"Error exporting image {i}: {e}")
+                        failed_count += 1
+                        continue
+
+            # Create a summary file
+            summary_file = os.path.join(export_dir, "export_summary.txt")
+            with open(summary_file, "w") as f:
+                f.write(f"Export Summary\n")
+                f.write(f"==============\n")
+                f.write(f"Export Date: {np.datetime64('now')}\n")
+                f.write(f"Total Images Moved: {exported_count}\n")
+                f.write(f"Failed Exports: {failed_count}\n")
+                f.write(f"Total Annotated Images Found: {annotated_count}\n\n")
+                f.write(f"Directory Structure:\n")
+                f.write(f"- images/: Contains the original image files\n")
+                f.write(f"- labels/: Contains YOLO format label files (.txt)\n")
+                f.write(f"- annotations/: Contains detailed annotation files (.json)\n")
+
+            # Also move existing YOLO label files if they exist
+            for i in range(len(self.image_paths)):
+                if self.has_saved_annotation(i):
+                    img_name = os.path.splitext(os.path.basename(self.image_paths[i]))[0]
+                    existing_label_file = os.path.join(self.label_dir, f"{img_name}.txt")
+                    if os.path.exists(existing_label_file):
+                        dest_label_path = os.path.join(labels_dir, f"{img_name}.txt")
+                        if not os.path.exists(dest_label_path):  # Only move if not already created
+                            shutil.move(existing_label_file, dest_label_path)
+
+            # Show success message
+            message = f"Successfully moved {exported_count} annotated images to:\n{export_dir}"
+            if failed_count > 0:
+                message += f"\n\nWarning: {failed_count} exports failed. Check console for details."
+
+            QMessageBox.information(self, "Export Complete", message)
+
+            # Ask if user wants to open the export folder
+            reply = QMessageBox.question(self, 'Open Export Folder',
+                                         'Do you want to open the export folder?',
+                                         QMessageBox.Yes | QMessageBox.No,
+                                         QMessageBox.Yes)
+
+            if reply == QMessageBox.Yes:
+                try:
+                    import platform
+                    if platform.system() == "Windows":
+                        os.startfile(export_dir)
+                    elif platform.system() == "Darwin":  # macOS
+                        os.system(f"open '{export_dir}'")
+                    else:  # Linux and others
+                        os.system(f"xdg-open '{export_dir}'")
+                except Exception as e:
+                    print(f"Could not open folder: {e}")
+            self.remove_loaded_images()
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Error during export: {e}")
+
+
+    def add_images(self):
+        """Add more images to the existing thumbnail grid"""
+        if not self.model:
+            QMessageBox.warning(self, "Warning", "Please configure settings first.")
+            self.show_settings_dialog()
+            return
+
+        # Auto-save current annotation before adding new images if enabled and there are unsaved changes
+        if self.auto_save_enabled and self.image_paths and self.detections and self.has_unsaved_changes:
+            self.auto_save_current_annotation()
+
+        files, _ = QFileDialog.getOpenFileNames(self, "Select Images to Add", "", "Images (*.jpg *.png *.jpeg)")
+        if files:
+            # Filter out files that are already loaded to avoid duplicates
+            new_files = []
+            existing_files = []
+
+            for file in files:
+                if file not in self.image_paths:
+                    new_files.append(file)
+                else:
+                    existing_files.append(os.path.basename(file))
+
+            if not new_files:
+                if existing_files:
+                    QMessageBox.information(self, "Info",
+                                            f"All selected images are already loaded:\n" +
+                                            "\n".join(existing_files[:5]) +
+                                            (f"\n... and {len(existing_files) - 5} more" if len(
+                                                existing_files) > 5 else ""))
+                return
+
+            # Add new images to the existing list
+            old_count = len(self.image_paths)
+            self.image_paths.extend(new_files)
+
+            # Update class names combo box if not already populated
+            if not self.class_names:
+                self.class_names = self.model.names
+                self.label_combo.clear()
+                for class_name in self.class_names.values():
+                    self.label_combo.addItem(class_name)
+
+            # Create thumbnails for the new images only
+            self.add_new_thumbnails(new_files, old_count)
+
+            # Update status
+            new_count = len(new_files)
+            total_count = len(self.image_paths)
+
+            status_message = f"Added {new_count} new images. Total: {total_count} images"
+            if existing_files:
+                status_message += f" ({len(existing_files)} duplicates skipped)"
+
+            self.status_label.setText(status_message)
+
+            # Show info message
+            info_message = f"Successfully added {new_count} new images."
+            if existing_files:
+                info_message += f"\n{len(existing_files)} duplicate(s) were skipped."
+
+            QMessageBox.information(self, "Images Added", info_message)
+
+
+    def add_new_thumbnails(self, new_files, start_index):
+        """Create thumbnails for newly added images and add them to the grid"""
+        cols = 5  # Number of columns in grid (should match the value in create_grid_thumbnails)
+
+        for i, img_path in enumerate(new_files):
+            thumbnail_index = start_index + i
+            thumbnail = ImageThumbnail(img_path, thumbnail_index)
+            thumbnail.clicked.connect(self.on_thumbnail_clicked)
+
+            # Calculate grid position
+            row = thumbnail_index // cols
+            col = thumbnail_index % cols
+            self.grid_layout.addWidget(thumbnail, row, col)
+            self.thumbnails.append(thumbnail)
+
+            # Check if this image already has a saved annotation
+            annotation_exists = self.has_saved_annotation(thumbnail_index)
+            thumbnail.set_annotated(annotation_exists)
+
+
+    def update_all_thumbnail_indices(self):
+        """Update all thumbnail indices after images are added or removed"""
+        for i, thumbnail in enumerate(self.thumbnails):
+            thumbnail.index = i
+            # Update the annotation status
+            annotation_exists = self.has_saved_annotation(i)
+            thumbnail.set_annotated(annotation_exists)
+
+    def remove_selected_images(self):
+        """Remove selected images from the thumbnail grid"""
+        if not self.image_paths:
+            QMessageBox.information(self, "Info", "No images are currently loaded.")
+            return
+
+        # Get selected thumbnails
+        selected_indices = []
+        for i, thumbnail in enumerate(self.thumbnails):
+            if hasattr(thumbnail, 'is_selected') and thumbnail.is_selected:
+                selected_indices.append(i)
+
+        if not selected_indices:
+            QMessageBox.information(self, "Info", "No images are selected for removal.")
+            return
+
+        # Ask for confirmation
+        reply = QMessageBox.question(self, 'Remove Selected Images',
+                                     f'Are you sure you want to remove {len(selected_indices)} selected image(s)?\n'
+                                     'This will remove them from the current session but won\'t delete the actual image files.',
+                                     QMessageBox.Yes | QMessageBox.No,
+                                     QMessageBox.No)
+
+        if reply == QMessageBox.Yes:
+            try:
+                # Auto-save current annotation before removing if enabled and there are unsaved changes
+                if (self.auto_save_enabled and self.current_index in selected_indices and
+                        self.detections and self.has_unsaved_changes):
+                    self.auto_save_current_annotation()
+
+                # Sort indices in descending order to remove from end to beginning
+                # This prevents index shifting issues
+                selected_indices.sort(reverse=True)
+
+                # Remove images and thumbnails
+                removed_count = 0
+                for index in selected_indices:
+                    if 0 <= index < len(self.image_paths):
+                        # Remove from image paths
+                        self.image_paths.pop(index)
+
+                        # Remove thumbnail widget
+                        thumbnail = self.thumbnails.pop(index)
+                        thumbnail.deleteLater()
+
+                        # Update annotated images set (shift indices down for removed images)
+                        new_annotated = set()
+                        for ann_idx in self.annotated_images:
+                            if ann_idx < index:
+                                new_annotated.add(ann_idx)
+                            elif ann_idx > index:
+                                new_annotated.add(ann_idx - 1)
+                            # Skip ann_idx == index (the removed image)
+                        self.annotated_images = new_annotated
+
+                        removed_count += 1
+
+                # Clear the grid layout
+                for i in reversed(range(self.grid_layout.count())):
+                    child = self.grid_layout.itemAt(i).widget()
+                    if child:
+                        child.setParent(None)
+
+                # Recreate the grid with remaining thumbnails
+                if self.image_paths:
+                    # Update thumbnail indices and recreate grid
+                    cols = 5
+                    for i, thumbnail in enumerate(self.thumbnails):
+                        thumbnail.index = i
+                        row = i // cols
+                        col = i % cols
+                        self.grid_layout.addWidget(thumbnail, row, col)
+
+                        # Update annotation status
+                        annotation_exists = self.has_saved_annotation(i)
+                        thumbnail.set_annotated(annotation_exists)
+                        # Clear selection state
+                        thumbnail.set_selected(False)
+
+                    # Adjust current index if necessary
+                    if self.current_index >= len(self.image_paths):
+                        self.current_index = len(self.image_paths) - 1
+                    elif self.current_index < 0:
+                        self.current_index = 0
+
+                    # Update current thumbnail state
+                    if self.thumbnails and 0 <= self.current_index < len(self.thumbnails):
+                        self.thumbnails[self.current_index].set_current(True)
+
+                    # Refresh current image display
+                    self.show_current_image()
+                else:
+                    # No images left, reset everything
+                    self.current_index = 0
+                    self.detections = []
+                    self.selected_boxes = set()
+                    self.box_labels = {}
+                    self.annotated_images = set()
+                    self.has_unsaved_changes = False
+
+                    # Clear the image display
+                    self.image_label.clear()
+                    self.image_label.setText("Load images to start")
+
+                    # Update status labels
+                    self.status_label.setText("Load images to start")
+                    self.selection_count_label.setText("Selected: 0")
+
+                QMessageBox.information(self, "Complete",
+                                        f"Successfully removed {removed_count} image(s). "
+                                        f"Remaining images: {len(self.image_paths)}")
+
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Error removing selected images: {e}")
+
+    def select_all_thumbnails(self):
+        """Select all thumbnails in the grid"""
+        if not self.thumbnails:
+            return
+
+        for thumbnail in self.thumbnails:
+            thumbnail.set_selected(True)
+
+        selected_count = len(self.thumbnails)
+        QMessageBox.information(self, "Selection", f"Selected all {selected_count} images.")
+
+    def deselect_all_thumbnails(self):
+        """Deselect all thumbnails in the grid"""
+        if not self.thumbnails:
+            return
+
+        for thumbnail in self.thumbnails:
+            thumbnail.set_selected(False)
+
+        QMessageBox.information(self, "Selection", "Deselected all images.")
+
+    def get_selected_thumbnail_count(self):
+        """Get the number of selected thumbnails"""
+        if not self.thumbnails:
+            return 0
+
+        count = 0
+        for thumbnail in self.thumbnails:
+            if hasattr(thumbnail, 'is_selected') and thumbnail.is_selected:
+                count += 1
+        return count
+
+    def update_thumbnail_selection_ui(self):
+        """Update UI elements related to thumbnail selection"""
+        selected_count = self.get_selected_thumbnail_count()
+        if hasattr(self, 'thumbnail_selection_label'):
+            self.thumbnail_selection_label.setText(f"Selected: {selected_count} / {len(self.thumbnails)}")
+
+    # Add these buttons to your setup_ui method in the grid_controls section:
+

@@ -129,8 +129,8 @@ class Annotator(QWidget):
         self.annotated_images = set()  # Track which images have been annotated
         self.has_unsaved_changes = False  # Track if current annotation has unsaved changes
 
-        self.model = YOLO(r"C:\Users\Nyuu Sutairu IT Dep\Desktop\cleaned\autotate\models\large.pt")
-        self.label_dir = r"C:\Users\Nyuu Sutairu IT Dep\Desktop\cleaned\autotate\labels"
+        self.model = YOLO(r"/models/large.pt")
+        self.label_dir = r"/labels"
         self.annotation_save_dir = r"C:\Users\Nyuu Sutairu IT Dep\Desktop\cleaned\autotate\saved_annotations"
         os.makedirs(self.label_dir, exist_ok=True)
         os.makedirs(self.annotation_save_dir, exist_ok=True)
