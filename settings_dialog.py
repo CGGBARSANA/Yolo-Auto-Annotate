@@ -1,158 +1,232 @@
+from PyQt5.QtWidgets import (
+    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
+    QLineEdit, QFileDialog, QMessageBox, QGroupBox, QRadioButton, QButtonGroup
+)
+from PyQt5.QtCore import pyqtSignal
 import os
-from PyQt5.QtWidgets import (QWidget, QPushButton, QLabel, QFileDialog,
-                             QVBoxLayout, QHBoxLayout, QMessageBox, QGroupBox)
-from PyQt5.QtCore import Qt, pyqtSignal
 
 
-class SettingsDialog(QWidget):
-    """Dialog for configuring application settings"""
+class SettingsDialog(QDialog):
     settings_saved = pyqtSignal(dict)
 
-    def __init__(self, current_settings=None):
-        super().__init__()
+    def __init__(self, current_settings=None, parent=None):
+        super().__init__(parent)
         self.current_settings = current_settings or {}
+        self.setWindowTitle("Settings Configuration")
+        self.setModal(True)
+        self.setFixedSize(500, 400)
         self.setup_ui()
         self.load_current_settings()
 
     def setup_ui(self):
-        self.setWindowTitle("YOLOv11 Annotator - Settings")
-        self.setGeometry(200, 200, 600, 400)
-        self.setWindowModality(Qt.ApplicationModal)
-
         layout = QVBoxLayout()
 
-        # Model path section
-        model_group = QGroupBox("YOLO Model")
+        # Model Path Section
+        model_group = QGroupBox("YOLO Model Configuration")
         model_layout = QVBoxLayout()
 
-        self.model_path_label = QLabel("No model selected")
-        self.model_path_label.setStyleSheet("padding: 5px; border: 1px solid gray;")
-        self.browse_model_btn = QPushButton("Browse Model (.pt file)")
-        self.browse_model_btn.clicked.connect(self.browse_model)
+        self.model_path_edit = QLineEdit()
+        self.model_path_edit.setPlaceholderText("Select YOLO model file (.pt)")
+        model_browse_btn = QPushButton("Browse Model File")
+        model_browse_btn.clicked.connect(self.browse_model_path)
 
-        model_layout.addWidget(QLabel("Select YOLO model file:"))
-        model_layout.addWidget(self.model_path_label)
-        model_layout.addWidget(self.browse_model_btn)
+        model_path_layout = QHBoxLayout()
+        model_path_layout.addWidget(QLabel("Model Path:"))
+        model_path_layout.addWidget(self.model_path_edit)
+        model_path_layout.addWidget(model_browse_btn)
+
+        model_layout.addLayout(model_path_layout)
         model_group.setLayout(model_layout)
+        layout.addWidget(model_group)
 
-        # Label directory section
-        label_group = QGroupBox("Labels Directory")
-        label_layout = QVBoxLayout()
+        # Directory Configuration Section
+        dir_group = QGroupBox("Directory Configuration")
+        dir_layout = QVBoxLayout()
 
-        self.label_dir_label = QLabel("No directory selected")
-        self.label_dir_label.setStyleSheet("padding: 5px; border: 1px solid gray;")
-        self.browse_label_dir_btn = QPushButton("Browse Label Directory")
-        self.browse_label_dir_btn.clicked.connect(self.browse_label_dir)
+        # Label Directory
+        self.label_dir_edit = QLineEdit()
+        self.label_dir_edit.setPlaceholderText("Directory for YOLO format labels")
+        label_browse_btn = QPushButton("Browse")
+        label_browse_btn.clicked.connect(self.browse_label_dir)
 
-        label_layout.addWidget(QLabel("Select directory to save YOLO format labels:"))
-        label_layout.addWidget(self.label_dir_label)
-        label_layout.addWidget(self.browse_label_dir_btn)
-        label_group.setLayout(label_layout)
+        label_dir_layout = QHBoxLayout()
+        label_dir_layout.addWidget(QLabel("Labels Directory:"))
+        label_dir_layout.addWidget(self.label_dir_edit)
+        label_dir_layout.addWidget(label_browse_btn)
 
-        # Annotation save directory section
-        annotation_group = QGroupBox("Annotations Directory")
-        annotation_layout = QVBoxLayout()
+        # Annotation Save Directory
+        self.annotation_dir_edit = QLineEdit()
+        self.annotation_dir_edit.setPlaceholderText("Directory for annotation JSON files")
+        annotation_browse_btn = QPushButton("Browse")
+        annotation_browse_btn.clicked.connect(self.browse_annotation_dir)
 
-        self.annotation_dir_label = QLabel("No directory selected")
-        self.annotation_dir_label.setStyleSheet("padding: 5px; border: 1px solid gray;")
-        self.browse_annotation_dir_btn = QPushButton("Browse Annotation Directory")
-        self.browse_annotation_dir_btn.clicked.connect(self.browse_annotation_dir)
+        annotation_dir_layout = QHBoxLayout()
+        annotation_dir_layout.addWidget(QLabel("Annotations Directory:"))
+        annotation_dir_layout.addWidget(self.annotation_dir_edit)
+        annotation_dir_layout.addWidget(annotation_browse_btn)
 
-        annotation_layout.addWidget(QLabel("Select directory to save annotation files:"))
-        annotation_layout.addWidget(self.annotation_dir_label)
-        annotation_layout.addWidget(self.browse_annotation_dir_btn)
-        annotation_group.setLayout(annotation_layout)
+        dir_layout.addLayout(label_dir_layout)
+        dir_layout.addLayout(annotation_dir_layout)
+        dir_group.setLayout(dir_layout)
+        layout.addWidget(dir_group)
+
+        # Class Selection Mode Section
+        class_mode_group = QGroupBox("Class Selection Mode")
+        class_mode_layout = QVBoxLayout()
+
+        self.class_mode_group = QButtonGroup()
+        self.model_only_radio = QRadioButton("Model Classes Only")
+        self.model_only_radio.setToolTip("Use only the classes defined in the YOLO model")
+
+        self.custom_only_radio = QRadioButton("Custom Labels Only")
+        self.custom_only_radio.setToolTip("Use only custom labels (create your own classes)")
+
+        self.both_radio = QRadioButton("Both Model & Custom Classes")
+        self.both_radio.setToolTip("Use both model classes and custom labels")
+        self.both_radio.setChecked(True)  # Default selection
+
+        self.class_mode_group.addButton(self.model_only_radio, 0)
+        self.class_mode_group.addButton(self.custom_only_radio, 1)
+        self.class_mode_group.addButton(self.both_radio, 2)
+
+        class_mode_layout.addWidget(self.model_only_radio)
+        class_mode_layout.addWidget(self.custom_only_radio)
+        class_mode_layout.addWidget(self.both_radio)
+
+        # Add description label
+        description_label = QLabel(
+            "• Model Classes Only: Restricts labeling to predefined model classes\n"
+            "• Custom Labels Only: Allows only user-defined custom labels\n"
+            "• Both: Allows using both model classes and custom labels (recommended)"
+        )
+        description_label.setStyleSheet("color: gray; font-size: 9pt; margin-top: 10px;")
+        class_mode_layout.addWidget(description_label)
+
+        class_mode_group.setLayout(class_mode_layout)
+        layout.addWidget(class_mode_group)
 
         # Buttons
         button_layout = QHBoxLayout()
-        self.save_btn = QPushButton("Save Settings")
-        self.cancel_btn = QPushButton("Cancel")
-        self.reset_btn = QPushButton("Reset to Defaults")
+        save_btn = QPushButton("Save Settings")
+        cancel_btn = QPushButton("Cancel")
 
-        self.save_btn.clicked.connect(self.save_settings)
-        self.cancel_btn.clicked.connect(self.close)
-        self.reset_btn.clicked.connect(self.reset_settings)
+        save_btn.clicked.connect(self.save_settings)
+        cancel_btn.clicked.connect(self.reject)
 
-        button_layout.addWidget(self.reset_btn)
         button_layout.addStretch()
-        button_layout.addWidget(self.cancel_btn)
-        button_layout.addWidget(self.save_btn)
+        button_layout.addWidget(save_btn)
+        button_layout.addWidget(cancel_btn)
 
-        # Add all to main layout
-        layout.addWidget(model_group)
-        layout.addWidget(label_group)
-        layout.addWidget(annotation_group)
         layout.addLayout(button_layout)
-
         self.setLayout(layout)
 
     def load_current_settings(self):
-        """Load current settings into the dialog"""
-        if 'model_path' in self.current_settings:
-            self.model_path_label.setText(self.current_settings['model_path'])
-        if 'label_dir' in self.current_settings:
-            self.label_dir_label.setText(self.current_settings['label_dir'])
-        if 'annotation_save_dir' in self.current_settings:
-            self.annotation_dir_label.setText(self.current_settings['annotation_save_dir'])
+        """Load current settings into the form"""
+        if not self.current_settings:
+            return
 
-    def browse_model(self):
+        # Load paths
+        self.model_path_edit.setText(self.current_settings.get('model_path', ''))
+        self.label_dir_edit.setText(self.current_settings.get('label_dir', ''))
+        self.annotation_dir_edit.setText(self.current_settings.get('annotation_save_dir', ''))
+
+        # Load class selection mode
+        mode = self.current_settings.get('class_selection_mode', 'both')
+        if mode == 'model_only':
+            self.model_only_radio.setChecked(True)
+        elif mode == 'custom_only':
+            self.custom_only_radio.setChecked(True)
+        else:
+            self.both_radio.setChecked(True)
+
+    def browse_model_path(self):
         """Browse for YOLO model file"""
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select YOLO Model", "", "PyTorch Models (*.pt);;All Files (*)"
+            self,
+            "Select YOLO Model File",
+            "",
+            "PyTorch Models (*.pt);;All Files (*)"
         )
         if file_path:
-            self.model_path_label.setText(file_path)
+            self.model_path_edit.setText(file_path)
 
     def browse_label_dir(self):
-        """Browse for label directory"""
-        dir_path = QFileDialog.getExistingDirectory(self, "Select Labels Directory")
+        """Browse for labels directory"""
+        dir_path = QFileDialog.getExistingDirectory(
+            self,
+            "Select Labels Directory"
+        )
         if dir_path:
-            self.label_dir_label.setText(dir_path)
+            self.label_dir_edit.setText(dir_path)
 
     def browse_annotation_dir(self):
-        """Browse for annotation directory"""
-        dir_path = QFileDialog.getExistingDirectory(self, "Select Annotations Directory")
+        """Browse for annotation save directory"""
+        dir_path = QFileDialog.getExistingDirectory(
+            self,
+            "Select Annotations Directory"
+        )
         if dir_path:
-            self.annotation_dir_label.setText(dir_path)
+            self.annotation_dir_edit.setText(dir_path)
 
-    def reset_settings(self):
-        """Reset all settings to empty"""
-        self.model_path_label.setText("No model selected")
-        self.label_dir_label.setText("No directory selected")
-        self.annotation_dir_label.setText("No directory selected")
+    def get_selected_class_mode(self):
+        """Get the selected class selection mode"""
+        if self.model_only_radio.isChecked():
+            return 'model_only'
+        elif self.custom_only_radio.isChecked():
+            return 'custom_only'
+        else:
+            return 'both'
+
+    def validate_settings(self):
+        """Validate the entered settings"""
+        model_path = self.model_path_edit.text().strip()
+        label_dir = self.label_dir_edit.text().strip()
+        annotation_dir = self.annotation_dir_edit.text().strip()
+
+        # Check if all required fields are filled
+        if not model_path:
+            QMessageBox.warning(self, "Validation Error", "Please select a YOLO model file.")
+            return False
+
+        if not label_dir:
+            QMessageBox.warning(self, "Validation Error", "Please select a labels directory.")
+            return False
+
+        if not annotation_dir:
+            QMessageBox.warning(self, "Validation Error", "Please select an annotations directory.")
+            return False
+
+        # Check if model file exists
+        if not os.path.exists(model_path):
+            QMessageBox.warning(self, "Validation Error", "The selected model file does not exist.")
+            return False
+
+        # Check if model file has correct extension
+        if not model_path.lower().endswith('.pt'):
+            QMessageBox.warning(self, "Validation Error", "Please select a valid PyTorch model file (.pt).")
+            return False
+
+        return True
 
     def save_settings(self):
-        """Save current settings"""
-        model_path = self.model_path_label.text()
-        label_dir = self.label_dir_label.text()
-        annotation_dir = self.annotation_dir_label.text()
-
-        # Validate inputs
-        if model_path == "No model selected" or not os.path.exists(model_path):
-            QMessageBox.warning(self, "Warning", "Please select a valid model file.")
-            return
-
-        if label_dir == "No directory selected":
-            QMessageBox.warning(self, "Warning", "Please select a labels directory.")
-            return
-
-        if annotation_dir == "No directory selected":
-            QMessageBox.warning(self, "Warning", "Please select an annotations directory.")
-            return
-
-        # Create directories if they don't exist
-        try:
-            os.makedirs(label_dir, exist_ok=True)
-            os.makedirs(annotation_dir, exist_ok=True)
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error creating directories: {e}")
+        """Save the settings"""
+        if not self.validate_settings():
             return
 
         settings = {
-            'model_path': model_path,
-            'label_dir': label_dir,
-            'annotation_save_dir': annotation_dir
+            'model_path': self.model_path_edit.text().strip(),
+            'label_dir': self.label_dir_edit.text().strip(),
+            'annotation_save_dir': self.annotation_dir_edit.text().strip(),
+            'class_selection_mode': self.get_selected_class_mode()
         }
 
+        # Create directories if they don't exist
+        try:
+            os.makedirs(settings['label_dir'], exist_ok=True)
+            os.makedirs(settings['annotation_save_dir'], exist_ok=True)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to create directories: {e}")
+            return
+
         self.settings_saved.emit(settings)
-        self.close()
+        self.accept()

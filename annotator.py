@@ -6,7 +6,7 @@ import numpy as np
 from PyQt5.QtWidgets import (
     QWidget, QPushButton, QLabel, QFileDialog, QVBoxLayout,
     QHBoxLayout, QMessageBox, QComboBox,
-    QGroupBox, QGridLayout, QScrollArea, QTabWidget
+    QGroupBox, QGridLayout, QScrollArea, QTabWidget, QDialog, QRadioButton, QButtonGroup
 )
 from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtCore import Qt
@@ -14,7 +14,13 @@ from ultralytics import YOLO
 from image_thumbnail import ImageThumbnail
 from settings_dialog import SettingsDialog
 from settings_manager import SettingsManager
-
+from preprocess_augment import PreprocessAugmentTab
+from custom_label_manager import CustomLabelManager
+from custom_label_dialog import CustomLabelDialog
+from PyQt5.QtWidgets import QCompleter
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QStandardItemModel, QStandardItem
+from annotatable_label import AnnotatableLabel
 
 class Annotator(QWidget):
     def __init__(self):
@@ -22,6 +28,9 @@ class Annotator(QWidget):
 
         # Initialize settings manager
         self.settings_manager = SettingsManager()
+        self.custom_label_manager = CustomLabelManager(self.settings_manager)
+
+        self.image_label = AnnotatableLabel()
 
         # Initialize paths as None - will be set by settings
         self.model = None
@@ -39,11 +48,209 @@ class Annotator(QWidget):
         self.annotated_images = set()
         self.has_unsaved_changes = False
 
+        # Class selection mode: "model_only", "custom_only", or "both"
+        self.class_selection_mode = "both"  # Default to both
+
         # Load settings or show settings dialog
         if not self.load_settings():
             self.show_settings_dialog()
         else:
             self.initialize_ui()
+            self.initialize_auto_suggest()
+
+
+    def reset_manual_annotation_fnc(self):
+        self.image_label.clear_boxes()
+
+    def manual_annotation_fnc(self):
+        try:
+            self.manual_annotation_enabled = self.manual_annotation_btn.isChecked()
+            if self.manual_annotation_enabled:
+                self.manual_annotation_btn.setText("Manual Annotation: ON")
+                self.save_manual_annotation_btn.setDisabled(False)
+                self.image_label.mousePressEvent = self.image_label.mousePressEvents
+                self.image_label.enable_drawing()
+                print("🟢 Annotation mode started.")
+            else:
+                self.manual_annotation_btn.setText("Manual Annotation: OFF")
+                self.save_manual_annotation_btn.setDisabled(True)
+                self.image_label.mousePressEvent = self.handle_click
+                self.image_label.disable_drawing()
+                self.reset_manual_annotation_fnc()
+        except Exception as e:
+            print("Error on Manual Annotation Image Function: ", e)
+
+    def setup_auto_suggest_combo(self):
+        """
+        Set up auto-suggest functionality for the label combo box.
+        This function should be called after initializing the combo box.
+        """
+        # Create a completer for auto-suggestions
+        self.completer = QCompleter()
+        self.completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.completer.setFilterMode(Qt.MatchContains)  # Match anywhere in the text
+
+        # Set the completer to the combo box
+        self.label_combo.setCompleter(self.completer)
+
+        # Update the completer model when combo box items change
+        self.update_completer_model()
+
+    def update_completer_model(self):
+        """
+        Update the completer model with current combo box items.
+        Call this whenever you add new items to the combo box.
+        """
+        if not hasattr(self, 'completer'):
+            return
+
+        # Get all items from combo box
+        items = []
+        for i in range(self.label_combo.count()):
+            items.append(self.label_combo.itemText(i))
+
+        # Create a model for the completer
+        model = QStandardItemModel()
+        for item in items:
+            model.appendRow(QStandardItem(item))
+
+        # Set the model to the completer
+        self.completer.setModel(model)
+
+    def populate_label_combo_with_autosuggest(self):
+        """
+        Enhanced version of populate_label_combo that includes auto-suggest updates.
+        Replace your existing populate_label_combo method with this one.
+        """
+        self.label_combo.clear()
+
+        # Add labels based on the selected mode
+        if self.class_selection_mode == "model_only":
+            # Add only model classes
+            if self.class_names:
+                for class_name in self.class_names.values():
+                    self.label_combo.addItem(class_name)
+        elif self.class_selection_mode == "custom_only":
+            # Add only custom labels
+            for label_name in self.custom_label_manager.get_custom_labels_list():
+                self.label_combo.addItem(label_name)
+        else:  # "both" mode
+            # Add model classes
+            if self.class_names:
+                for class_name in self.class_names.values():
+                    self.label_combo.addItem(class_name)
+            # Add custom labels
+            for label_name in self.custom_label_manager.get_custom_labels_list():
+                self.label_combo.addItem(label_name)
+
+        # Update the auto-suggest completer
+        self.update_completer_model()
+
+    # Additional method to add custom suggestions on-the-fly
+    def add_suggestion_to_combo(self, suggestion):
+        """
+        Add a new suggestion to the combo box and update auto-suggest.
+
+        Args:
+            suggestion (str): The new suggestion to add
+        """
+        # Check if item already exists
+        existing_items = [self.label_combo.itemText(i) for i in range(self.label_combo.count())]
+
+        if suggestion not in existing_items:
+            # Only add if it's allowed by the current class selection mode
+            if self.is_label_allowed(suggestion):
+                self.label_combo.addItem(suggestion)
+                self.update_completer_model()
+
+    def is_label_allowed(self, label_text):
+        """
+        Check if a label is allowed based on the current class selection mode.
+
+        Args:
+            label_text (str): The label text to check
+
+        Returns:
+            bool: True if the label is allowed, False otherwise
+        """
+        if self.class_selection_mode == "model_only":
+            # Only allow model class names
+            return label_text in self.class_names.values() if self.class_names else False
+        elif self.class_selection_mode == "custom_only":
+            # Allow any label (will become custom)
+            return True
+        else:  # "both" mode
+            # Allow any label
+            return True
+
+    # Enhanced assign label function that learns from user input
+    def assign_label_to_selected_with_learning(self):
+        """
+        Enhanced version of assign_label_to_selected that learns new labels for auto-suggest.
+        """
+        if not self.selected_boxes:
+            QMessageBox.warning(self, "Warning", "No boxes selected.")
+            return
+
+        label_text = self.label_combo.currentText().strip()
+        if not label_text:
+            QMessageBox.warning(self, "Warning", "Please enter or select a label.")
+            return
+
+        # Check if the label is allowed based on current mode
+        if not self.is_label_allowed(label_text):
+            mode_text = {
+                "model_only": "model classes only",
+                "custom_only": "custom labels only",
+                "both": "both model and custom labels"
+            }
+            QMessageBox.warning(self, "Label Not Allowed",
+                                f"The label '{label_text}' is not allowed in the current mode: {mode_text[self.class_selection_mode]}.")
+            return
+
+        # Add the new label to suggestions if it's not already there
+        self.add_suggestion_to_combo(label_text)
+
+        try:
+            # Get or create class ID for this label with current mode
+            class_id = self.custom_label_manager.get_class_id(
+                label_text,
+                self.class_names,
+                self.class_selection_mode
+            )
+
+            # Assign label to all selected boxes
+            for i in self.selected_boxes:
+                self.box_labels[i] = label_text
+                # Update the detection's class ID
+                self.detections[i]["cls"] = class_id
+
+            # Refresh combo box to include any new custom labels
+            self.populate_label_combo_with_autosuggest()
+
+            # Set current text back to the assigned label
+            self.label_combo.setCurrentText(label_text)
+
+            self.has_unsaved_changes = True
+            self.display_image()
+            if self.auto_save_enabled:
+                self.save_annotations()
+
+        except ValueError as e:
+            QMessageBox.warning(self, "Error", str(e))
+
+
+    # Method to initialize auto-suggest in your existing setup
+    def initialize_auto_suggest(self):
+        """
+        Initialize auto-suggest functionality.
+        Call this in your initialize_ui method after setting up the combo box.
+        """
+        # Set up auto-suggest
+        self.setup_auto_suggest_combo()
+
+        # Populate combo box with auto-suggest
+        self.populate_label_combo_with_autosuggest()
 
     def load_settings(self):
         """Load settings and initialize model"""
@@ -58,18 +265,26 @@ class Annotator(QWidget):
             self.label_dir = settings['label_dir']
             self.annotation_save_dir = settings['annotation_save_dir']
 
+            # Load class selection mode from settings
+            self.class_selection_mode = settings.get('class_selection_mode', 'both')
+
             # Ensure directories exist
             os.makedirs(self.label_dir, exist_ok=True)
             os.makedirs(self.annotation_save_dir, exist_ok=True)
+            self.class_names = self.model.names
+            self.custom_label_manager.set_model_classes(self.class_names)
+
+            # Set the mode in the custom label manager
+            self.custom_label_manager.set_mode(self.class_selection_mode)
 
             return True
         except Exception as e:
             QMessageBox.critical(None, "Error", f"Error loading settings: {e}")
             return False
-
     def show_settings_dialog(self):
         """Show settings configuration dialog"""
         current_settings = self.settings_manager.load_settings()
+        current_settings['class_selection_mode'] = getattr(self, 'class_selection_mode', 'both')
         self.settings_dialog = SettingsDialog(current_settings)
         self.settings_dialog.settings_saved.connect(self.on_settings_saved)
         self.settings_dialog.show()
@@ -86,13 +301,55 @@ class Annotator(QWidget):
         else:
             QMessageBox.critical(self, "Error", "Failed to save settings.")
 
+    def check_albumentations_dependency(self):
+        """Check if albumentations is installed"""
+        try:
+            import albumentations
+            return True
+        except ImportError:
+            QMessageBox.critical(self, "Missing Dependency",
+                                 "The albumentations library is required for preprocessing and augmentation features.\n\n"
+                                 "Please install it using:\n"
+                                 "pip install albumentations\n\n"
+                                 "The Preprocess & Augment tab will be disabled until this dependency is installed.")
+            return False
+
     def initialize_ui(self):
         """Initialize the main UI after settings are loaded"""
-        self.setWindowTitle("YOLOv11 Auto Annotate GUI - Enhanced with Grid View")
+        self.setWindowTitle("YOLOv11 Auto Annotate GUI - Enhanced with Grid View and Augmentation")
         self.setGeometry(100, 100, 1400, 900)
         self.setup_ui()
+
+        # Check for albumentations dependency
+        if not self.check_albumentations_dependency():
+            # Disable the augmentation tab
+            self.tab_widget.setTabEnabled(2, False)
+            self.tab_widget.setTabToolTip(2, "Install albumentations library to enable this feature")
+
         self.connect_signals()
         self.show()
+
+    def populate_label_combo(self):
+        """Populate combo box with available labels based on selection mode"""
+        self.label_combo.clear()
+
+        if self.class_selection_mode == "model_only":
+            # Add only model classes
+            if self.class_names:
+                for class_name in self.class_names.values():
+                    self.label_combo.addItem(class_name)
+        elif self.class_selection_mode == "custom_only":
+            # Add only custom labels
+            for label_name in self.custom_label_manager.get_custom_labels_list():
+                self.label_combo.addItem(label_name)
+        else:  # "both" mode
+            # Add model classes
+            if self.class_names:
+                for class_name in self.class_names.values():
+                    self.label_combo.addItem(class_name)
+            # Add custom labels
+            for label_name in self.custom_label_manager.get_custom_labels_list():
+                self.label_combo.addItem(label_name)
 
     def setup_ui(self):
         main_layout = QVBoxLayout()
@@ -100,8 +357,6 @@ class Annotator(QWidget):
         # Add settings button at the top
         settings_layout = QHBoxLayout()
         self.settings_btn = QPushButton("Settings")
-
-
         settings_layout.addWidget(self.settings_btn)
         settings_layout.addStretch()
         main_layout.addLayout(settings_layout)
@@ -114,17 +369,11 @@ class Annotator(QWidget):
         grid_layout = QVBoxLayout()
 
         # Grid controls
-
         grid_controls = QHBoxLayout()
         self.add_images_btn = QPushButton("Add Images")
         grid_controls.addWidget(self.add_images_btn)
-        # self.load_btn = QPushButton("Load Images")
-        # grid_controls.addWidget(self.load_btn)
         grid_controls.addStretch()
         grid_layout.addLayout(grid_controls)
-        # In setup_ui method, in the grid_controls section:
-
-        # In connect_signals method:
 
         self.remove_all_btn = QPushButton("Remove All Images")
         grid_controls.addWidget(self.remove_all_btn)
@@ -143,12 +392,11 @@ class Annotator(QWidget):
         grid_controls.addWidget(self.deselect_all_thumbnails_btn)
 
         self.remove_selected_btn = QPushButton("Remove Selected")
-        self.remove_selected_btn.setStyleSheet("QPushButton { background-color: #ffcccc; }")  # Light red background
+        self.remove_selected_btn.setStyleSheet("QPushButton { background-color: #ffcccc; }")
         grid_controls.addWidget(self.remove_selected_btn)
 
         grid_controls.addStretch()
         grid_layout.addLayout(grid_controls)
-        # In connect_signals method, add:
 
         # Scrollable grid area
         scroll_area = QScrollArea()
@@ -183,27 +431,88 @@ class Annotator(QWidget):
         info_group.setLayout(info_layout)
         left_panel.addWidget(info_group)
 
+        # Class Selection Mode section
+        class_mode_group = QGroupBox("Class Selection Mode")
+        class_mode_layout = QVBoxLayout()
+
+        self.class_mode_group = QButtonGroup()
+        self.model_only_radio = QRadioButton("Model Classes Only")
+        self.custom_only_radio = QRadioButton("Custom Labels Only")
+        self.both_radio = QRadioButton("Both Model & Custom")
+
+        # Set default selection
+        if self.class_selection_mode == "model_only":
+            self.model_only_radio.setChecked(True)
+        elif self.class_selection_mode == "custom_only":
+            self.custom_only_radio.setChecked(True)
+        else:
+            self.both_radio.setChecked(True)
+
+        self.class_mode_group.addButton(self.model_only_radio, 0)
+        self.class_mode_group.addButton(self.custom_only_radio, 1)
+        self.class_mode_group.addButton(self.both_radio, 2)
+
+        class_mode_layout.addWidget(self.model_only_radio)
+        class_mode_layout.addWidget(self.custom_only_radio)
+        class_mode_layout.addWidget(self.both_radio)
+        class_mode_group.setLayout(class_mode_layout)
+        left_panel.addWidget(class_mode_group)
+
         # Label assignment section
         self.label_combo = QComboBox()
         self.label_combo.setEditable(True)
         self.label_combo.setPlaceholderText("Select or enter label")
         self.assign_label_btn = QPushButton("Assign Label to Selected")
 
+        # Custom label management buttons
+        label_management_layout = QHBoxLayout()
+        self.manage_labels_btn = QPushButton("Manage Labels")
+        self.refresh_labels_btn = QPushButton("Refresh")
+        label_management_layout.addWidget(self.manage_labels_btn)
+        label_management_layout.addWidget(self.refresh_labels_btn)
+
         label_group = QGroupBox("Label Assignment")
         label_layout = QVBoxLayout()
         label_layout.addWidget(QLabel("Assign label to selected boxes:"))
         label_layout.addWidget(self.label_combo)
         label_layout.addWidget(self.assign_label_btn)
+        label_layout.addLayout(label_management_layout)
         label_group.setLayout(label_layout)
         left_panel.addWidget(label_group)
 
-        # Selection controls
+
+        # Manual Selection
+        self.manual_annotation_btn = QPushButton("Manual Annotation: OFF")
+        self.manual_annotation_btn.setCheckable(True)
+        self.manual_annotation_btn.setChecked(False)
+        self.manual_annotation_enabled = False
+
+        self.remove_manual_annotation_btn = QPushButton("Remove Manual Annotation")
+        self.reset_manual_annotation_btn = QPushButton("Reset Manual Annotation")
+        self.save_manual_annotation_btn = QPushButton("Save Manual Annotation")
+        self.save_manual_annotation_btn.setDisabled(True)
+
+        manual_selection_group = QGroupBox("Manual Annotate Selection Controls")
+        manual_selection_layout = QVBoxLayout()
+        manual_selection_layout.addWidget(self.manual_annotation_btn)
+        manual_selection_layout.addWidget(self.remove_manual_annotation_btn)
+        manual_selection_layout.addWidget(self.reset_manual_annotation_btn)
+        manual_selection_layout.addWidget(self.save_manual_annotation_btn)
+        manual_selection_group.setLayout(manual_selection_layout)
+        left_panel.addWidget(manual_selection_group)
+
+
+        # Auto Selection controls
+        self.selection_count_label = QLabel("Selected: 0")
         self.select_all_btn = QPushButton("Select All")
         self.deselect_all_btn = QPushButton("Deselect All")
-        self.selection_count_label = QLabel("Selected: 0")
 
-        selection_group = QGroupBox("Selection Controls")
+
+
+
+        selection_group = QGroupBox("Auto Annotate Selection Controls")
         selection_layout = QVBoxLayout()
+
         selection_layout.addWidget(self.selection_count_label)
         selection_layout.addWidget(self.select_all_btn)
         selection_layout.addWidget(self.deselect_all_btn)
@@ -235,11 +544,9 @@ class Annotator(QWidget):
         session_layout = QVBoxLayout()
 
         self.clear_session_btn = QPushButton("Clear All Annotations")
-        # self.export_labels_btn = QPushButton("Export Selected Labels")
         self.export_annotations_btn = QPushButton("Export Annotations")
 
         session_layout.addWidget(self.clear_session_btn)
-        # session_layout.addWidget(self.export_labels_btn)
         session_layout.addWidget(self.export_annotations_btn)
         session_group.setLayout(session_layout)
         left_panel.addWidget(session_group)
@@ -247,7 +554,7 @@ class Annotator(QWidget):
         left_panel.addStretch()
 
         # Right panel for image display
-        self.image_label = QLabel()
+        # self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignCenter)
         self.image_label.setMinimumSize(800, 600)
         self.image_label.setStyleSheet("border: 1px solid gray;")
@@ -260,9 +567,39 @@ class Annotator(QWidget):
         detail_tab.setLayout(detail_layout)
         self.tab_widget.addTab(detail_tab, "Detail View")
 
+        self.preprocess_augment_tab = PreprocessAugmentTab(self)
+        self.tab_widget.addTab(self.preprocess_augment_tab, "Preprocess & Augment")
+
         # Add tab widget to main layout
         main_layout.addWidget(self.tab_widget)
         self.setLayout(main_layout)
+
+    def on_class_mode_changed(self):
+        """Handle class selection mode change"""
+        old_mode = self.class_selection_mode
+
+        if self.model_only_radio.isChecked():
+            self.class_selection_mode = "model_only"
+        elif self.custom_only_radio.isChecked():
+            self.class_selection_mode = "custom_only"
+        else:
+            self.class_selection_mode = "both"
+
+        # Update the custom label manager mode
+        self.custom_label_manager.set_mode(self.class_selection_mode)
+
+        # Update the combo box with new mode
+        self.populate_label_combo_with_autosuggest()
+
+        # Update placeholder text based on mode
+        if self.class_selection_mode == "model_only":
+            self.label_combo.setPlaceholderText("Select model class")
+        elif self.class_selection_mode == "custom_only":
+            self.label_combo.setPlaceholderText("Enter custom label")
+        else:
+            self.label_combo.setPlaceholderText("Select or enter label")
+
+
 
     def connect_signals(self):
         # self.load_btn.clicked.connect(self.load_images)
@@ -276,7 +613,15 @@ class Annotator(QWidget):
         self.next_btn.clicked.connect(self.show_next_image)
         self.prev_btn.clicked.connect(self.show_prev_image)
         self.save_btn.clicked.connect(self.save_annotations)
-        self.assign_label_btn.clicked.connect(self.assign_label_to_selected)
+
+
+        self.manual_annotation_btn.clicked.connect(self.manual_annotation_fnc)
+        self.reset_manual_annotation_btn.clicked.connect(self.reset_manual_annotation_fnc)
+        self.save_manual_annotation_btn.clicked.connect(self.save_manual_annotation_fnc)
+
+
+
+        self.assign_label_btn.clicked.connect(self.assign_label_to_selected_with_learning)
         self.select_all_btn.clicked.connect(self.select_all_boxes)
         self.deselect_all_btn.clicked.connect(self.deselect_all_boxes)
         self.auto_save_btn.clicked.connect(self.toggle_auto_save)
@@ -284,31 +629,18 @@ class Annotator(QWidget):
         # self.export_labels_btn.clicked.connect(self.export_selected_labels)
         self.export_annotations_btn.clicked.connect(self.export_annotations)
         self.image_label.mousePressEvent = self.handle_click
+        self.manage_labels_btn.clicked.connect(self.show_label_management_dialog)
+        self.refresh_labels_btn.clicked.connect(self.populate_label_combo_with_autosuggest)
 
-    # def load_images(self):
-    #     if not self.model:
-    #         QMessageBox.warning(self, "Warning", "Please configure settings first.")
-    #         self.show_settings_dialog()
-    #         return
-    #
-    #     self.class_names = self.model.names
-    #
-    #     # Populate combo box with model class names
-    #     self.label_combo.clear()
-    #     for class_name in self.class_names.values():
-    #         self.label_combo.addItem(class_name)
-    #
-    #     files, _ = QFileDialog.getOpenFileNames(self, "Select Images", "", "Images (*.jpg *.png *.jpeg)")
-    #     if files:
-    #         self.image_paths = files
-    #         self.current_index = 0
-    #         self.annotated_images.clear()
-    #         self.has_unsaved_changes = False
-    #         self.create_grid_thumbnails()
-    #         self.show_current_image()
-    #         self.status_label.setText(f"Loaded {len(files)} images")
-    #         # Switch to detail view after loading
-    #         self.tab_widget.setCurrentIndex(1)
+        # Connect class mode radio buttons
+        self.class_mode_group.buttonClicked.connect(self.on_class_mode_changed)
+
+    def show_label_management_dialog(self):
+        """Show the custom label management dialog"""
+        dialog = CustomLabelDialog(self.custom_label_manager, self)
+        if dialog.exec_() == QDialog.Accepted:
+            # Refresh the combo box after dialog closes
+            self.populate_label_combo_with_autosuggest()
 
     def create_grid_thumbnails(self):
         # Clear existing thumbnails
@@ -340,6 +672,7 @@ class Annotator(QWidget):
 
         # Update selection UI
         self.update_thumbnail_selection_ui()
+
     def on_thumbnail_clicked(self, index):
         # Auto-save current annotation before switching if enabled
         if self.auto_save_enabled and self.image_paths and self.detections and hasattr(self, 'current_index'):
@@ -351,6 +684,102 @@ class Annotator(QWidget):
         self.tab_widget.setCurrentIndex(1)
         # Update thumbnail states
         self.update_thumbnail_states()
+
+    def save_manual_annotation_fnc(self):
+        try:
+            if not hasattr(self, 'current_image'):
+                print("No current image loaded")
+                return
+
+            # Get original image dimensions
+            original_height, original_width = self.current_image.shape[:2]
+
+            # Get the displayed pixmap and its dimensions
+            pixmap = self.image_label.pixmap()
+            if pixmap is None:
+                print("No pixmap in image_label")
+                return
+
+            displayed_width = pixmap.width()
+            displayed_height = pixmap.height()
+
+            # Get the label size
+            label_width = self.image_label.width()
+            label_height = self.image_label.height()
+
+            # Calculate the actual position of the scaled image within the label
+            # (since the image is centered when scaled with KeepAspectRatio)
+            x_offset = (label_width - displayed_width) // 2
+            y_offset = (label_height - displayed_height) // 2
+
+            # Calculate scaling factors
+            scale_x = original_width / displayed_width
+            scale_y = original_height / displayed_height
+
+            # Convert manual annotations to original image coordinates
+            for idx, rect in enumerate(self.image_label.boxes):
+                # Get coordinates relative to the label
+                label_x1, label_y1 = rect.left(), rect.top()
+                label_x2, label_y2 = rect.right(), rect.bottom()
+
+                # Convert to coordinates relative to the displayed image
+                img_x1 = label_x1 - x_offset
+                img_y1 = label_y1 - y_offset
+                img_x2 = label_x2 - x_offset
+                img_y2 = label_y2 - y_offset
+
+                # Skip boxes that are outside the image area
+                if img_x1 < 0 or img_y1 < 0 or img_x2 > displayed_width or img_y2 > displayed_height:
+                    continue
+
+                # Scale to original image coordinates
+                orig_x1 = int(img_x1 * scale_x)
+                orig_y1 = int(img_y1 * scale_y)
+                orig_x2 = int(img_x2 * scale_x)
+                orig_y2 = int(img_y2 * scale_y)
+
+                # Clamp to image boundaries
+                orig_x1 = max(0, min(orig_x1, original_width))
+                orig_y1 = max(0, min(orig_y1, original_height))
+                orig_x2 = max(0, min(orig_x2, original_width))
+                orig_y2 = max(0, min(orig_y2, original_height))
+
+                # Calculate area for sorting
+                area = (orig_x2 - orig_x1) * (orig_y2 - orig_y1)
+
+                # Only add if the box has some area
+                if area > 0:
+                    self.detections.append({
+                        "cls": 1,  # Default class, you might want to make this configurable
+                        "conf": 1.0,
+                        "box": [orig_x1, orig_y1, orig_x2, orig_y2],
+                        "area": area,
+                        "original_index": len(self.detections)  # Use actual index
+                    })
+
+            # Clear the manual annotation boxes
+            self.image_label.clear_boxes()
+
+            # Update UI state
+            self.manual_annotation_btn.setChecked(False)
+            self.manual_annotation_btn.setText("Manual Annotation: OFF")
+            self.save_manual_annotation_btn.setDisabled(True)
+
+            # Restore normal mouse handling
+            self.image_label.mousePressEvent = self.handle_click
+            self.image_label.disable_drawing()
+
+            # Refresh display and status
+            self.display_image()
+            self.update_status()
+
+            print(f"Added {len(self.image_label.boxes)} manual annotations")
+
+        except Exception as e:
+            print("Error in save_manual_annotation_fnc:", e)
+            import traceback
+            traceback.print_exc()
+
 
     def show_current_image(self):
         if not self.image_paths or self.current_index >= len(self.image_paths) or not self.model:
@@ -436,6 +865,11 @@ class Annotator(QWidget):
             return
 
         img = self.current_image.copy()
+        # Get labels based on current mode
+        all_labels = self.custom_label_manager.get_all_labels(
+            self.class_names,
+            self.class_selection_mode
+        )
 
         # Draw boxes in order (largest first, so smallest appears on top)
         for i, det in enumerate(self.detections):
@@ -455,13 +889,9 @@ class Annotator(QWidget):
             # Display label (custom or original class name)
             if i in self.box_labels:
                 label_text = self.box_labels[i]
-                self.label_combo.setCurrentText(label_text)
-                for idx, name in self.class_names.items():
-                    if name == label_text:
-                        det["cls"] = idx
-                        break
             else:
-                label_text = f"{self.class_names[cls]}"
+                # Use the comprehensive label mapping based on current mode
+                label_text = all_labels.get(cls, f"Unknown_{cls}")
 
             # Add confidence score
             label_text += f" ({det['conf']:.2f})"
@@ -478,6 +908,8 @@ class Annotator(QWidget):
         # Scale image to fit label while maintaining aspect ratio
         scaled_pix = pix.scaled(self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.image_label.setPixmap(scaled_pix)
+
+
 
     def handle_click(self, event):
         if not self.detections:
@@ -529,19 +961,36 @@ class Annotator(QWidget):
             QMessageBox.warning(self, "Warning", "Please enter or select a label.")
             return
 
+        # Check if the label is allowed based on current mode
+        if not self.is_label_allowed(label_text):
+            mode_text = {
+                "model_only": "model classes only",
+                "custom_only": "custom labels only",
+                "both": "both model and custom labels"
+            }
+            QMessageBox.warning(self, "Label Not Allowed",
+                                f"The label '{label_text}' is not allowed in the current mode: {mode_text[self.class_selection_mode]}.")
+            return
+
+        # Get or create class ID for this label
+        class_id = self.custom_label_manager.get_class_id(label_text, self.class_names)
+
         # Assign label to all selected boxes
         for i in self.selected_boxes:
             self.box_labels[i] = label_text
+            # Update the detection's class ID
+            self.detections[i]["cls"] = class_id
 
-        # Add to combo box if it's a new label
-        if self.label_combo.findText(label_text) == -1:
-            self.label_combo.addItem(label_text)
+        # Refresh combo box to include any new custom labels
+        self.populate_label_combo_with_autosuggest()
+
+        # Set current text back to the assigned label
+        self.label_combo.setCurrentText(label_text)
 
         self.has_unsaved_changes = True
         self.display_image()
         if self.auto_save_enabled:
             self.save_annotations()
-        # QMessageBox.information(self, "Success", f"Assigned label '{label_text}' to {len(self.selected_boxes)} boxes.")
 
     def select_all_boxes(self):
         self.selected_boxes = set(range(len(self.detections)))
@@ -580,12 +1029,8 @@ class Annotator(QWidget):
         self.update_thumbnail_states()
         self.update_status()
 
-        # img_name = os.path.splitext(os.path.basename(self.image_paths[self.current_index]))[0]
-        # QMessageBox.information(self, "Saved",
-        #                         f"Annotation saved for {img_name} with {len(self.selected_boxes)} boxes.")
-
     def save_yolo_format(self):
-        """Save annotations in YOLO format"""
+        """Save annotations in YOLO format with consistent class IDs"""
         img_path = self.image_paths[self.current_index]
         img_name = os.path.splitext(os.path.basename(img_path))[0]
         h, w = self.original_shape
@@ -595,20 +1040,17 @@ class Annotator(QWidget):
             for i in self.selected_boxes:
                 det = self.detections[i]
                 x1, y1, x2, y2 = det["box"]
-                print(i)
 
-                # Determine class index
+                # Get class ID using the custom label manager with current mode
                 if i in self.box_labels:
                     custom_label = self.box_labels[i]
-                    cls = None
-                    for idx, name in self.class_names.items():
-                        if name == custom_label:
-                            cls = idx
-                            break
-                    print("LABEL in IF", cls, "|", self.box_labels, "|", det, "|")
+                    cls = self.custom_label_manager.get_class_id(
+                        custom_label,
+                        self.class_names,
+                        self.class_selection_mode
+                    )
                 else:
                     cls = det["cls"]
-                    print("LABEL in Else", cls)
 
                 # Convert to YOLO format (normalized)
                 cx = (x1 + x2) / 2 / w
@@ -636,7 +1078,9 @@ class Annotator(QWidget):
             "selected_boxes": list(self.selected_boxes),
             "box_labels": self.box_labels,
             "original_shape": self.original_shape,
-            "timestamp": str(np.datetime64('now'))
+            "timestamp": str(np.datetime64('now')),
+            # "custom_labels": self.custom_label_manager.custom_labels,  # Save custom labels mapping
+            "class_selection_mode": self.class_selection_mode  # Save current mode
         }
 
         annotation_file = self.get_annotation_filename()
@@ -673,6 +1117,21 @@ class Annotator(QWidget):
             self.detections = annotation_data["detections"]
             self.selected_boxes = set(annotation_data["selected_boxes"])
             self.box_labels = {int(k): v for k, v in annotation_data["box_labels"].items()}
+
+            # # Load custom labels if available in the annotation
+            # if "custom_labels" in annotation_data:
+            #     # Merge with existing custom labels
+            #     for label_name, class_id in annotation_data["custom_labels"].items():
+            #         if label_name not in self.custom_label_manager.custom_labels:
+            #             self.custom_label_manager.custom_labels[label_name] = class_id
+            #             # Update next_custom_id if necessary
+            #             if class_id >= self.custom_label_manager.next_custom_id:
+            #                 self.custom_label_manager.next_custom_id = class_id + 1
+            #
+            #     # Save the updated custom labels
+            #     self.custom_label_manager.save_custom_labels()
+            #     # Refresh combo box
+            #     self.populate_label_combo_with_autosuggest()
 
             return True
 
@@ -756,11 +1215,8 @@ class Annotator(QWidget):
                 self.image_label.clear()
                 self.image_label.setText("Load images to start")
 
-                # Clear the label combo box (keep only model class names)
-                self.label_combo.clear()
-                if hasattr(self, 'class_names') and self.class_names:
-                    for class_name in self.class_names.values():
-                        self.label_combo.addItem(class_name)
+                # Clear the label combo box (keep only model class names based on mode)
+                self.populate_label_combo_with_autosuggest()
 
                 # Update status labels
                 self.status_label.setText("Load images to start")
@@ -774,21 +1230,12 @@ class Annotator(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Error removing images: {e}")
 
-
     def remove_loaded_images(self):
         """Remove all loaded images from the thumbnail grid and reset the application state"""
         if not self.image_paths:
             QMessageBox.information(self, "Info", "No images are currently loaded.")
             return
 
-        # # Ask for confirmation
-        # reply = QMessageBox.question(self, 'Remove All Images',
-        #                              'Are you sure you want to remove all loaded images?\n'
-        #                              'This will clear the current session but won\'t delete the actual image files.',
-        #                              QMessageBox.Yes | QMessageBox.No,
-        #                              QMessageBox.No)
-        #
-        # if reply == QMessageBox.Yes:
         try:
             # Auto-save current annotation before clearing if enabled and there are unsaved changes
             if self.auto_save_enabled and self.image_paths and self.detections and self.has_unsaved_changes:
@@ -818,11 +1265,8 @@ class Annotator(QWidget):
             self.image_label.clear()
             self.image_label.setText("Load images to start")
 
-            # Clear the label combo box (keep only model class names)
-            self.label_combo.clear()
-            if hasattr(self, 'class_names') and self.class_names:
-                for class_name in self.class_names.values():
-                    self.label_combo.addItem(class_name)
+            # Clear the label combo box based on current mode
+            self.populate_label_combo_with_autosuggest()
 
             # Update status labels
             self.status_label.setText("Load images to start")
@@ -835,16 +1279,6 @@ class Annotator(QWidget):
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Error removing images: {e}")
-
-
-    # Additional method to add the button to the UI
-    def add_remove_images_button(self):
-        """Add the remove all images button to the grid controls"""
-        # This should be added to the grid_controls layout in setup_ui method
-        # Find the grid_controls layout and add:
-        self.remove_all_btn = QPushButton("Remove All Images")
-        self.remove_all_btn.clicked.connect(self.remove_all_images)
-        # grid_controls.addWidget(self.remove_all_btn)  # Add this line in setup_ui
 
     def export_annotations(self):
         """Export all annotated images, labels, and JSON annotations to an 'annotated_images' folder"""
@@ -875,6 +1309,21 @@ class Annotator(QWidget):
             exported_count = 0
             failed_count = 0
 
+            # Create class mapping file for custom labels
+            all_labels = self.custom_label_manager.get_all_labels(self.class_names)
+            classes_file = os.path.join(export_dir, "classes.txt")
+            with open(classes_file, "w") as f:
+                # Sort by class ID for consistent ordering
+                sorted_labels = sorted(all_labels.items())
+                for class_id, class_name in sorted_labels:
+                    f.write(f"{class_name}\n")
+
+            # Export custom labels mapping
+            if self.custom_label_manager.custom_labels:
+                custom_labels_export = os.path.join(export_dir, "custom_labels_mapping.json")
+                with open(custom_labels_export, "w") as f:
+                    json.dump(self.custom_label_manager.custom_labels, f, indent=2)
+
             for i in range(len(self.image_paths)):
                 if self.has_saved_annotation(i):
                     try:
@@ -884,62 +1333,22 @@ class Annotator(QWidget):
 
                         # Move the original image
                         dest_img_path = os.path.join(images_dir, f"{img_name}{img_ext}")
+                        shutil.move(img_path, dest_img_path)
 
+                        # Move label file
+                        label_file = os.path.join(self.label_dir, f"{img_name}.txt")
+                        if os.path.exists(label_file):
+                            dest_label_path = os.path.join(labels_dir, f"{img_name}.txt")
+                            shutil.move(label_file, dest_label_path)
 
-                        # Load annotation to get the detection data
-                        old_index = self.current_index
-                        self.current_index = i
-
-                        # if self.load_previous_annotation():
-                            # Save YOLO format label file
-
-                            #
-                            # # Get image dimensions
-                            # img = cv2.imread(img_path)
-                            # h, w = img.shape[:2]
-                            #
-                            # with open(label_file, "w") as f:
-                            #     for box_idx in self.selected_boxes:
-                            #         det = self.detections[box_idx]
-                            #         x1, y1, x2, y2 = det["box"]
-                            #
-                            #         # Determine class index
-                            #         if box_idx in self.box_labels:
-                            #             custom_label = self.box_labels[box_idx]
-                            #             cls = None
-                            #             for idx, name in self.class_names.items():
-                            #                 if name == custom_label:
-                            #                     cls = idx
-                            #                     break
-                            #             if cls is None:  # If custom label not found in class names
-                            #                 cls = det["cls"]
-                            #         else:
-                            #             cls = det["cls"]
-                            #
-                            #         # Convert to YOLO format (normalized)
-                            #         cx = (x1 + x2) / 2 / w
-                            #         cy = (y1 + y2) / 2 / h
-                            #         bw = (x2 - x1) / w
-                            #         bh = (y2 - y1) / h
-                            #         f.write(f"{cls} {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}\n")
-
-                            # Move the JSON annotation file
+                        # Move annotation file
                         annotation_file = self.get_annotation_filename(i)
-                        # if os.path.exists(labels_dir):
-                        label_file = os.path.join(labels_dir, f"{img_name}.txt")
-                        print(label_file)
                         if os.path.exists(annotation_file):
                             dest_annotation_path = os.path.join(annotations_dir, f"{img_name}_annotation.json")
                             shutil.move(annotation_file, dest_annotation_path)
 
-                            dest_annotation_path = os.path.join(labels_dir, f"{img_name}.txt")
-                            path = os.path.join(self.label_dir, f"{img_name}.txt")
-                            shutil.move(path, dest_annotation_path)
-
                         exported_count += 1
 
-                        self.current_index = old_index
-                        shutil.move(img_path, dest_img_path)
                     except Exception as e:
                         print(f"Error exporting image {i}: {e}")
                         failed_count += 1
@@ -953,21 +1362,15 @@ class Annotator(QWidget):
                 f.write(f"Export Date: {np.datetime64('now')}\n")
                 f.write(f"Total Images Moved: {exported_count}\n")
                 f.write(f"Failed Exports: {failed_count}\n")
-                f.write(f"Total Annotated Images Found: {annotated_count}\n\n")
+                f.write(f"Total Annotated Images Found: {annotated_count}\n")
+                f.write(f"Custom Labels Used: {len(self.custom_label_manager.custom_labels)}\n")
+                f.write(f"Class Selection Mode: {self.class_selection_mode}\n\n")
                 f.write(f"Directory Structure:\n")
                 f.write(f"- images/: Contains the original image files\n")
                 f.write(f"- labels/: Contains YOLO format label files (.txt)\n")
                 f.write(f"- annotations/: Contains detailed annotation files (.json)\n")
-
-            # Also move existing YOLO label files if they exist
-            for i in range(len(self.image_paths)):
-                if self.has_saved_annotation(i):
-                    img_name = os.path.splitext(os.path.basename(self.image_paths[i]))[0]
-                    existing_label_file = os.path.join(self.label_dir, f"{img_name}.txt")
-                    if os.path.exists(existing_label_file):
-                        dest_label_path = os.path.join(labels_dir, f"{img_name}.txt")
-                        if not os.path.exists(dest_label_path):  # Only move if not already created
-                            shutil.move(existing_label_file, dest_label_path)
+                f.write(f"- classes.txt: Contains all class names in order\n")
+                f.write(f"- custom_labels_mapping.json: Maps custom labels to class IDs\n")
 
             # Show success message
             message = f"Successfully moved {exported_count} annotated images to:\n{export_dir}"
@@ -993,10 +1396,11 @@ class Annotator(QWidget):
                         os.system(f"xdg-open '{export_dir}'")
                 except Exception as e:
                     print(f"Could not open folder: {e}")
+
             self.remove_loaded_images()
+
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Error during export: {e}")
-
 
     def add_images(self):
         """Add more images to the existing thumbnail grid"""
@@ -1037,9 +1441,11 @@ class Annotator(QWidget):
             # Update class names combo box if not already populated
             if not self.class_names:
                 self.class_names = self.model.names
-                self.label_combo.clear()
-                for class_name in self.class_names.values():
-                    self.label_combo.addItem(class_name)
+                self.custom_label_manager.set_model_classes(self.class_names)
+                self.populate_label_combo_with_autosuggest()
+            else:
+                # Just refresh the combo box based on current mode
+                self.populate_label_combo_with_autosuggest()
 
             # Create thumbnails for the new images only
             self.add_new_thumbnails(new_files, old_count)
@@ -1061,7 +1467,6 @@ class Annotator(QWidget):
 
             QMessageBox.information(self, "Images Added", info_message)
 
-
     def add_new_thumbnails(self, new_files, start_index):
         """Create thumbnails for newly added images and add them to the grid"""
         cols = 5  # Number of columns in grid (should match the value in create_grid_thumbnails)
@@ -1070,6 +1475,7 @@ class Annotator(QWidget):
             thumbnail_index = start_index + i
             thumbnail = ImageThumbnail(img_path, thumbnail_index)
             thumbnail.clicked.connect(self.on_thumbnail_clicked)
+            thumbnail.selection_changed.connect(self.update_thumbnail_selection_ui)
 
             # Calculate grid position
             row = thumbnail_index // cols
@@ -1080,7 +1486,6 @@ class Annotator(QWidget):
             # Check if this image already has a saved annotation
             annotation_exists = self.has_saved_annotation(thumbnail_index)
             thumbnail.set_annotated(annotation_exists)
-
 
     def update_all_thumbnail_indices(self):
         """Update all thumbnail indices after images are added or removed"""
@@ -1243,5 +1648,69 @@ class Annotator(QWidget):
         if hasattr(self, 'thumbnail_selection_label'):
             self.thumbnail_selection_label.setText(f"Selected: {selected_count} / {len(self.thumbnails)}")
 
-    # Add these buttons to your setup_ui method in the grid_controls section:
+    def get_class_selection_summary(self):
+        """Get a summary of the current class selection mode for display"""
+        mode_descriptions = {
+            "model_only": "Using model classes only",
+            "custom_only": "Using custom labels only",
+            "both": "Using both model classes and custom labels"
+        }
+        return mode_descriptions.get(self.class_selection_mode, "Unknown mode")
 
+    def validate_label_for_mode(self, label_text):
+        """
+        Validate if a label is appropriate for the current selection mode.
+
+        Args:
+            label_text (str): The label to validate
+
+        Returns:
+            tuple: (is_valid, error_message)
+        """
+        if self.class_selection_mode == "model_only":
+            if self.class_names and label_text not in self.class_names.values():
+                available_classes = ", ".join(self.class_names.values())
+                return False, f"Only model classes are allowed. Available: {available_classes}"
+        elif self.class_selection_mode == "custom_only":
+            if self.class_names and label_text in self.class_names.values():
+                return False, "Only custom labels are allowed. This is a model class."
+        # "both" mode allows everything
+        return True, ""
+
+    def update_ui_for_mode_change(self):
+        """Update UI elements when class selection mode changes"""
+        # Update combo box placeholder
+        placeholders = {
+            "model_only": "Select model class",
+            "custom_only": "Enter custom label",
+            "both": "Select or enter label"
+        }
+        self.label_combo.setPlaceholderText(placeholders.get(self.class_selection_mode, "Select or enter label"))
+
+        # Update status display if needed
+        if hasattr(self, 'status_label'):
+            current_text = self.status_label.text()
+            if "Mode:" not in current_text and self.image_paths:
+                mode_text = self.get_class_selection_summary()
+                self.status_label.setText(f"{current_text} | Mode: {self.class_selection_mode}")
+
+    def export_class_configuration(self, export_dir):
+        """Export class configuration information"""
+        try:
+            config_file = os.path.join(export_dir, "class_configuration.json")
+            config_data = {
+                "class_selection_mode": self.class_selection_mode,
+                "model_classes": dict(self.class_names) if self.class_names else {},
+                "custom_labels": self.custom_label_manager.custom_labels,
+                "total_model_classes": len(self.class_names) if self.class_names else 0,
+                "total_custom_labels": len(self.custom_label_manager.custom_labels),
+                "export_timestamp": str(np.datetime64('now'))
+            }
+
+            with open(config_file, 'w') as f:
+                json.dump(config_data, f, indent=2)
+
+            return True
+        except Exception as e:
+            print(f"Error exporting class configuration: {e}")
+            return False
