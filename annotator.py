@@ -487,7 +487,7 @@ class Annotator(QWidget):
         self.manual_annotation_btn.setChecked(False)
         self.manual_annotation_enabled = False
 
-        self.remove_manual_annotation_btn = QPushButton("Remove Manual Annotation")
+        # self.remove_manual_annotation_btn = QPushButton("Remove Manual Annotation")
         self.reset_manual_annotation_btn = QPushButton("Reset Manual Annotation")
         self.save_manual_annotation_btn = QPushButton("Save Manual Annotation")
         self.save_manual_annotation_btn.setDisabled(True)
@@ -495,7 +495,7 @@ class Annotator(QWidget):
         manual_selection_group = QGroupBox("Manual Annotate Selection Controls")
         manual_selection_layout = QVBoxLayout()
         manual_selection_layout.addWidget(self.manual_annotation_btn)
-        manual_selection_layout.addWidget(self.remove_manual_annotation_btn)
+        # manual_selection_layout.addWidget(self.remove_manual_annotation_btn)
         manual_selection_layout.addWidget(self.reset_manual_annotation_btn)
         manual_selection_layout.addWidget(self.save_manual_annotation_btn)
         manual_selection_group.setLayout(manual_selection_layout)
@@ -506,16 +506,17 @@ class Annotator(QWidget):
         self.selection_count_label = QLabel("Selected: 0")
         self.select_all_btn = QPushButton("Select All")
         self.deselect_all_btn = QPushButton("Deselect All")
+        self.remove_selected_annotation_btn = QPushButton("Remove Annotation")
 
 
 
-
-        selection_group = QGroupBox("Auto Annotate Selection Controls")
+        selection_group = QGroupBox("Selection Controls")
         selection_layout = QVBoxLayout()
 
         selection_layout.addWidget(self.selection_count_label)
         selection_layout.addWidget(self.select_all_btn)
         selection_layout.addWidget(self.deselect_all_btn)
+        selection_layout.addWidget(self.remove_selected_annotation_btn)
         selection_group.setLayout(selection_layout)
         left_panel.addWidget(selection_group)
 
@@ -624,6 +625,7 @@ class Annotator(QWidget):
         self.assign_label_btn.clicked.connect(self.assign_label_to_selected_with_learning)
         self.select_all_btn.clicked.connect(self.select_all_boxes)
         self.deselect_all_btn.clicked.connect(self.deselect_all_boxes)
+        self.remove_selected_annotation_btn.clicked.connect(self.remove_annotation)
         self.auto_save_btn.clicked.connect(self.toggle_auto_save)
         self.clear_session_btn.clicked.connect(self.clear_all_annotations)
         # self.export_labels_btn.clicked.connect(self.export_selected_labels)
@@ -687,94 +689,96 @@ class Annotator(QWidget):
 
     def save_manual_annotation_fnc(self):
         try:
-            if not hasattr(self, 'current_image'):
-                print("No current image loaded")
-                return
+            if not self.label_combo.currentText().strip() == "":
+                if not hasattr(self, 'current_image'):
+                    print("No current image loaded")
+                    return
+                index = self.label_combo.currentIndex()
+                # Get original image dimensions
+                original_height, original_width = self.current_image.shape[:2]
 
-            # Get original image dimensions
-            original_height, original_width = self.current_image.shape[:2]
+                # Get the displayed pixmap and its dimensions
+                pixmap = self.image_label.pixmap()
+                if pixmap is None:
+                    print("No pixmap in image_label")
+                    return
 
-            # Get the displayed pixmap and its dimensions
-            pixmap = self.image_label.pixmap()
-            if pixmap is None:
-                print("No pixmap in image_label")
-                return
+                displayed_width = pixmap.width()
+                displayed_height = pixmap.height()
 
-            displayed_width = pixmap.width()
-            displayed_height = pixmap.height()
+                # Get the label size
+                label_width = self.image_label.width()
+                label_height = self.image_label.height()
 
-            # Get the label size
-            label_width = self.image_label.width()
-            label_height = self.image_label.height()
+                # Calculate the actual position of the scaled image within the label
+                # (since the image is centered when scaled with KeepAspectRatio)
+                x_offset = (label_width - displayed_width) // 2
+                y_offset = (label_height - displayed_height) // 2
 
-            # Calculate the actual position of the scaled image within the label
-            # (since the image is centered when scaled with KeepAspectRatio)
-            x_offset = (label_width - displayed_width) // 2
-            y_offset = (label_height - displayed_height) // 2
+                # Calculate scaling factors
+                scale_x = original_width / displayed_width
+                scale_y = original_height / displayed_height
 
-            # Calculate scaling factors
-            scale_x = original_width / displayed_width
-            scale_y = original_height / displayed_height
+                # Convert manual annotations to original image coordinates
+                for idx, rect in enumerate(self.image_label.boxes):
+                    # Get coordinates relative to the label
+                    label_x1, label_y1 = rect.left(), rect.top()
+                    label_x2, label_y2 = rect.right(), rect.bottom()
 
-            # Convert manual annotations to original image coordinates
-            for idx, rect in enumerate(self.image_label.boxes):
-                # Get coordinates relative to the label
-                label_x1, label_y1 = rect.left(), rect.top()
-                label_x2, label_y2 = rect.right(), rect.bottom()
+                    # Convert to coordinates relative to the displayed image
+                    img_x1 = label_x1 - x_offset
+                    img_y1 = label_y1 - y_offset
+                    img_x2 = label_x2 - x_offset
+                    img_y2 = label_y2 - y_offset
 
-                # Convert to coordinates relative to the displayed image
-                img_x1 = label_x1 - x_offset
-                img_y1 = label_y1 - y_offset
-                img_x2 = label_x2 - x_offset
-                img_y2 = label_y2 - y_offset
+                    # Skip boxes that are outside the image area
+                    if img_x1 < 0 or img_y1 < 0 or img_x2 > displayed_width or img_y2 > displayed_height:
+                        continue
 
-                # Skip boxes that are outside the image area
-                if img_x1 < 0 or img_y1 < 0 or img_x2 > displayed_width or img_y2 > displayed_height:
-                    continue
+                    # Scale to original image coordinates
+                    orig_x1 = int(img_x1 * scale_x)
+                    orig_y1 = int(img_y1 * scale_y)
+                    orig_x2 = int(img_x2 * scale_x)
+                    orig_y2 = int(img_y2 * scale_y)
 
-                # Scale to original image coordinates
-                orig_x1 = int(img_x1 * scale_x)
-                orig_y1 = int(img_y1 * scale_y)
-                orig_x2 = int(img_x2 * scale_x)
-                orig_y2 = int(img_y2 * scale_y)
+                    # Clamp to image boundaries
+                    orig_x1 = max(0, min(orig_x1, original_width))
+                    orig_y1 = max(0, min(orig_y1, original_height))
+                    orig_x2 = max(0, min(orig_x2, original_width))
+                    orig_y2 = max(0, min(orig_y2, original_height))
 
-                # Clamp to image boundaries
-                orig_x1 = max(0, min(orig_x1, original_width))
-                orig_y1 = max(0, min(orig_y1, original_height))
-                orig_x2 = max(0, min(orig_x2, original_width))
-                orig_y2 = max(0, min(orig_y2, original_height))
+                    # Calculate area for sorting
+                    area = (orig_x2 - orig_x1) * (orig_y2 - orig_y1)
 
-                # Calculate area for sorting
-                area = (orig_x2 - orig_x1) * (orig_y2 - orig_y1)
+                    # Only add if the box has some area
+                    if area > 0:
+                        self.detections.append({
+                            "cls": index,  # Default class, you might want to make this configurable
+                            "conf": 1.0,
+                            "box": [orig_x1, orig_y1, orig_x2, orig_y2],
+                            "area": area,
+                            "original_index": len(self.detections)  # Use actual index
+                        })
 
-                # Only add if the box has some area
-                if area > 0:
-                    self.detections.append({
-                        "cls": 1,  # Default class, you might want to make this configurable
-                        "conf": 1.0,
-                        "box": [orig_x1, orig_y1, orig_x2, orig_y2],
-                        "area": area,
-                        "original_index": len(self.detections)  # Use actual index
-                    })
+                # Clear the manual annotation boxes
+                self.image_label.clear_boxes()
 
-            # Clear the manual annotation boxes
-            self.image_label.clear_boxes()
+                # Update UI state
+                self.manual_annotation_btn.setChecked(False)
+                self.manual_annotation_btn.setText("Manual Annotation: OFF")
+                self.save_manual_annotation_btn.setDisabled(True)
 
-            # Update UI state
-            self.manual_annotation_btn.setChecked(False)
-            self.manual_annotation_btn.setText("Manual Annotation: OFF")
-            self.save_manual_annotation_btn.setDisabled(True)
+                # Restore normal mouse handling
+                self.image_label.mousePressEvent = self.handle_click
+                self.image_label.disable_drawing()
+                self.detections.sort(key=lambda x: x["area"], reverse=True)
+                # Refresh display and status
+                self.display_image()
+                self.update_status()
 
-            # Restore normal mouse handling
-            self.image_label.mousePressEvent = self.handle_click
-            self.image_label.disable_drawing()
-
-            # Refresh display and status
-            self.display_image()
-            self.update_status()
-
-            print(f"Added {len(self.image_label.boxes)} manual annotations")
-
+                print(f"Added {len(self.image_label.boxes)} manual annotations")
+            else:
+                QMessageBox.information(self, "Info", "Annotation label is empty!")
         except Exception as e:
             print("Error in save_manual_annotation_fnc:", e)
             import traceback
@@ -991,6 +995,17 @@ class Annotator(QWidget):
         self.display_image()
         if self.auto_save_enabled:
             self.save_annotations()
+
+    def remove_annotation(self):
+        print("Removed!")
+        for i in sorted(self.selected_boxes, reverse=True):
+            if 0 <= i < len(self.detections):
+                del self.detections[i]
+
+        # Clear selected_boxes after deletion
+        self.selected_boxes.clear()
+        self.display_image()
+        self.update_status()
 
     def select_all_boxes(self):
         self.selected_boxes = set(range(len(self.detections)))

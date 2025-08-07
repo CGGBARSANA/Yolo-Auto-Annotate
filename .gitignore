@@ -56,3 +56,8 @@ python_backups/output.json
 python_backups/output.txt
 __pycache__/settings_dialog.cpython-311.pyc
 __pycache__/annotator.cpython-311.pyc
+*.json
+*.exe
+*.txt
+*.spec
+*.pyc
