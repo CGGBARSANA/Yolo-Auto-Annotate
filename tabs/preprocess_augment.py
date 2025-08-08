@@ -104,7 +104,7 @@ class AugmentationWorker(QThread):
             # Save transformed image
             base_name = os.path.splitext(os.path.basename(img_data['path']))[0]
             output_filename = f"{base_name}_{suffix}.jpg"
-            output_path = os.path.join(self.output_dir, 'images', output_filename)
+            output_path = os.path.join(self.output_dir, '../images', output_filename)
 
             # Convert back to BGR for saving
             bgr_image = cv2.cvtColor(transformed_image, cv2.COLOR_RGB2BGR)
@@ -113,7 +113,7 @@ class AugmentationWorker(QThread):
             # Save annotations in YOLO format
             if transformed_bboxes:
                 label_filename = f"{base_name}_{suffix}.txt"
-                label_path = os.path.join(self.output_dir, 'labels', label_filename)
+                label_path = os.path.join(self.output_dir, '../labels', label_filename)
 
                 with open(label_path, 'w') as f:
                     for bbox, class_id in zip(transformed_bboxes, transformed_labels):
@@ -854,8 +854,8 @@ class PreprocessAugmentTab(QWidget):
 
         # Prepare output directory
         output_dir = self.output_dir_label.text()
-        images_dir = os.path.join(output_dir, 'images')
-        labels_dir = os.path.join(output_dir, 'labels')
+        images_dir = os.path.join(output_dir, '../images')
+        labels_dir = os.path.join(output_dir, '../labels')
 
         try:
             os.makedirs(images_dir, exist_ok=True)

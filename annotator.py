@@ -9,12 +9,12 @@ from PyQt5.QtWidgets import (
     QGroupBox, QGridLayout, QScrollArea, QTabWidget, QDialog, QRadioButton, QButtonGroup
 )
 from PyQt5.QtGui import QPixmap, QImage
-from PyQt5.QtCore import Qt
 from ultralytics import YOLO
 from image_thumbnail import ImageThumbnail
 from settings_dialog import SettingsDialog
 from settings_manager import SettingsManager
-from preprocess_augment import PreprocessAugmentTab
+from tabs.preprocess_augment import PreprocessAugmentTab
+from tabs.camera_annotation import CameraAnnotation
 from custom_label_manager import CustomLabelManager
 from custom_label_dialog import CustomLabelDialog
 from PyQt5.QtWidgets import QCompleter
@@ -568,8 +568,14 @@ class Annotator(QWidget):
         detail_tab.setLayout(detail_layout)
         self.tab_widget.addTab(detail_tab, "Detail View")
 
+        detail_tab.setLayout(detail_layout)
+        self.tab_widget.addTab(detail_tab, "Detail View")
+
         self.preprocess_augment_tab = PreprocessAugmentTab(self)
         self.tab_widget.addTab(self.preprocess_augment_tab, "Preprocess & Augment")
+
+        self.camera_annotation = CameraAnnotation(self)
+        self.tab_widget.addTab(self.camera_annotation, "Camera Capture Annotation")
 
         # Add tab widget to main layout
         main_layout.addWidget(self.tab_widget)
