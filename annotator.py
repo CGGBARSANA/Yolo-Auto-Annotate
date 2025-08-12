@@ -21,6 +21,9 @@ from PyQt5.QtWidgets import QCompleter
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from annotatable_label import AnnotatableLabel
+from tabs.grid_view import GridView
+from tabs.detail_view import DetailView
+
 
 class Annotator(QWidget):
     def __init__(self):
@@ -351,67 +354,17 @@ class Annotator(QWidget):
             for label_name in self.custom_label_manager.get_custom_labels_list():
                 self.label_combo.addItem(label_name)
 
-    def setup_ui(self):
-        main_layout = QVBoxLayout()
-
-        # Add settings button at the top
+    def setup_settings_button(self, parent_layout):
         settings_layout = QHBoxLayout()
         self.settings_btn = QPushButton("Settings")
         settings_layout.addWidget(self.settings_btn)
         settings_layout.addStretch()
-        main_layout.addLayout(settings_layout)
+        parent_layout.addLayout(settings_layout)
 
-        # Create tab widget for grid and detail views
-        self.tab_widget = QTabWidget()
+    # def setup_grid_view(self, tabWidget):
 
-        # Tab 1: Grid View
-        grid_tab = QWidget()
-        grid_layout = QVBoxLayout()
 
-        # Grid controls
-        grid_controls = QHBoxLayout()
-        self.add_images_btn = QPushButton("Add Images")
-        grid_controls.addWidget(self.add_images_btn)
-        grid_controls.addStretch()
-        grid_layout.addLayout(grid_controls)
-
-        self.remove_all_btn = QPushButton("Remove All Images")
-        grid_controls.addWidget(self.remove_all_btn)
-        separator = QLabel("|")
-        separator.setStyleSheet("color: gray; font-weight: bold;")
-        grid_controls.addWidget(separator)
-
-        # Thumbnail selection controls
-        self.thumbnail_selection_label = QLabel("Selected: 0 / 0")
-        grid_controls.addWidget(self.thumbnail_selection_label)
-
-        self.select_all_thumbnails_btn = QPushButton("Select All")
-        grid_controls.addWidget(self.select_all_thumbnails_btn)
-
-        self.deselect_all_thumbnails_btn = QPushButton("Deselect All")
-        grid_controls.addWidget(self.deselect_all_thumbnails_btn)
-
-        self.remove_selected_btn = QPushButton("Remove Selected")
-        self.remove_selected_btn.setStyleSheet("QPushButton { background-color: #ffcccc; }")
-        grid_controls.addWidget(self.remove_selected_btn)
-
-        grid_controls.addStretch()
-        grid_layout.addLayout(grid_controls)
-
-        # Scrollable grid area
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-
-        self.grid_widget = QWidget()
-        self.grid_layout = QGridLayout(self.grid_widget)
-        self.grid_layout.setSpacing(10)
-        scroll_area.setWidget(self.grid_widget)
-
-        grid_layout.addWidget(scroll_area)
-        grid_tab.setLayout(grid_layout)
-        self.tab_widget.addTab(grid_tab, "Grid View")
+    def setup_detail_view(self, tableWidget):
 
         # Tab 2: Detail View
         detail_tab = QWidget()
@@ -566,10 +519,23 @@ class Annotator(QWidget):
         detail_layout.addWidget(left_widget)
         detail_layout.addLayout(right_layout)
         detail_tab.setLayout(detail_layout)
-        self.tab_widget.addTab(detail_tab, "Detail View")
+        tableWidget.addTab(detail_tab, "Detail View")
 
-        detail_tab.setLayout(detail_layout)
-        self.tab_widget.addTab(detail_tab, "Detail View")
+
+    def setup_ui(self):
+        main_layout = QVBoxLayout()
+
+        # Add settings button at the top
+        self.setup_settings_button(main_layout)
+
+        # Create tab widget for grid and detail views
+        self.tab_widget = QTabWidget()
+        # self.setup_grid_view(self.tab_widget)
+        self.grid_view = GridView(self)
+        self.tab_widget.addTab(self.grid_view, "Grid view")
+
+        self.setup_detail_view(self.tab_widget)
+
 
         self.preprocess_augment_tab = PreprocessAugmentTab(self)
         self.tab_widget.addTab(self.preprocess_augment_tab, "Preprocess & Augment")
@@ -610,13 +576,13 @@ class Annotator(QWidget):
 
     def connect_signals(self):
         # self.load_btn.clicked.connect(self.load_images)
-        self.select_all_thumbnails_btn.clicked.connect(self.select_all_thumbnails)
-        self.deselect_all_thumbnails_btn.clicked.connect(self.deselect_all_thumbnails)
-        self.remove_selected_btn.clicked.connect(self.remove_selected_images)
+        self.grid_view.select_all_thumbnails_btn.clicked.connect(self.select_all_thumbnails)
+        self.grid_view.deselect_all_thumbnails_btn.clicked.connect(self.deselect_all_thumbnails)
+        self.grid_view.remove_selected_btn.clicked.connect(self.remove_selected_images)
 
         self.settings_btn.clicked.connect(self.show_settings_dialog)
-        self.add_images_btn.clicked.connect(self.add_images)
-        self.remove_all_btn.clicked.connect(self.remove_all_images)
+        self.grid_view.add_images_btn.clicked.connect(self.add_images)
+        self.grid_view.remove_all_btn.clicked.connect(self.remove_all_images)
         self.next_btn.clicked.connect(self.show_next_image)
         self.prev_btn.clicked.connect(self.show_prev_image)
         self.save_btn.clicked.connect(self.save_annotations)
@@ -657,8 +623,8 @@ class Annotator(QWidget):
         self.thumbnails.clear()
 
         # Clear grid layout
-        for i in reversed(range(self.grid_layout.count())):
-            self.grid_layout.itemAt(i).widget().setParent(None)
+        for i in reversed(range(self.grid_view.grid_layout.count())):
+            self.grid_view.grid_layout.itemAt(i).widget().setParent(None)
 
         # Create new thumbnails
         cols = 5  # Number of columns in grid
@@ -671,7 +637,7 @@ class Annotator(QWidget):
 
             row = i // cols
             col = i % cols
-            self.grid_layout.addWidget(thumbnail, row, col)
+            self.grid_view.grid_layout.addWidget(thumbnail, row, col)
             self.thumbnails.append(thumbnail)
 
         # Update current thumbnail
@@ -1218,8 +1184,8 @@ class Annotator(QWidget):
                 self.thumbnails.clear()
 
                 # Clear the grid layout
-                for i in reversed(range(self.grid_layout.count())):
-                    child = self.grid_layout.itemAt(i).widget()
+                for i in reversed(range(self.grid_view.grid_layout.count())):
+                    child = self.grid_view.grid_layout.itemAt(i).widget()
                     if child:
                         child.setParent(None)
 
@@ -1268,8 +1234,8 @@ class Annotator(QWidget):
             self.thumbnails.clear()
 
             # Clear the grid layout
-            for i in reversed(range(self.grid_layout.count())):
-                child = self.grid_layout.itemAt(i).widget()
+            for i in reversed(range(self.grid_view.grid_layout.count())):
+                child = self.grid_view.grid_layout.itemAt(i).widget()
                 if child:
                     child.setParent(None)
 
@@ -1501,7 +1467,7 @@ class Annotator(QWidget):
             # Calculate grid position
             row = thumbnail_index // cols
             col = thumbnail_index % cols
-            self.grid_layout.addWidget(thumbnail, row, col)
+            self.grid_view.grid_layout.addWidget(thumbnail, row, col)
             self.thumbnails.append(thumbnail)
 
             # Check if this image already has a saved annotation
@@ -1574,8 +1540,8 @@ class Annotator(QWidget):
                         removed_count += 1
 
                 # Clear the grid layout
-                for i in reversed(range(self.grid_layout.count())):
-                    child = self.grid_layout.itemAt(i).widget()
+                for i in reversed(range(self.grid_view.grid_layout.count())):
+                    child = self.grid_view.grid_layout.itemAt(i).widget()
                     if child:
                         child.setParent(None)
 
@@ -1587,7 +1553,7 @@ class Annotator(QWidget):
                         thumbnail.index = i
                         row = i // cols
                         col = i % cols
-                        self.grid_layout.addWidget(thumbnail, row, col)
+                        self.grid_view.grid_layout.addWidget(thumbnail, row, col)
 
                         # Update annotation status
                         annotation_exists = self.has_saved_annotation(i)
