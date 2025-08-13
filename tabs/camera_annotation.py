@@ -6,7 +6,7 @@ import time
 import numpy as np
 from datetime import datetime
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QImage, QPixmap, QPen, QPainter, QColor, QFont
+from PyQt5.QtGui import QImage, QPixmap, QPen, QPainter, QColor, QFont, QIntValidator
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QScrollArea, QHBoxLayout, QGroupBox,
     QLabel, QPushButton, QComboBox, QGridLayout, QFrame, QMessageBox,
@@ -29,6 +29,7 @@ class CameraAnnotation(QWidget):
         self.detection_enabled = False
         self.confidence_threshold = 0.5
         self.class_names = {}
+        self.capture_count = 0
 
         # New features for class-specific annotation
         self.continuous_capture = False
@@ -251,6 +252,20 @@ class CameraAnnotation(QWidget):
 
         continuous_layout.addLayout(class_selection_layout)
 
+        # Capture Limit input
+        capture_limit_layout = QHBoxLayout()
+        capture_limit_layout.addWidget(QLabel("Capture Limit: "))
+        self.capture_limit_input = QLineEdit()
+        self.capture_limit_input.setPlaceholderText("0 - 10000")
+        # self.capture_limit_input.textChanged.connect(self.on_continuous_custom_changed)
+        capture_limit_layout.addWidget(self.capture_limit_input)
+        class_selection_layout.addLayout(capture_limit_layout)
+
+        # Allow only integers from 0 to 10000
+        int_validator = QIntValidator(0, 10000)
+        self.capture_limit_input.setValidator(int_validator)
+        continuous_layout.addLayout(class_selection_layout)
+
         # Buttons
         self.start_continuous_btn = QPushButton("Start Continuous Capture")
         self.start_continuous_btn.clicked.connect(self.start_continuous_capture)
@@ -328,6 +343,7 @@ class CameraAnnotation(QWidget):
 
             if self.class_names:
                 # Sort class names for better usability
+                print("CHECK THE VALUE:!!!!!!!!!",self.class_names.values())
                 sorted_classes = sorted(self.class_names.values())
                 for class_name in sorted_classes:
                     combo_box.addItem(class_name)
@@ -440,7 +456,7 @@ class CameraAnnotation(QWidget):
                     # Get class ID
                     if det["class_name"].lower() == target_class.lower():
                         # Use the model's class ID if it matches
-                        cls = det["class_id"]
+                        cls = det["cls"]
                     else:
                         # Use custom class ID for the target class
                         cls = self.get_class_id_for_name(target_class)
@@ -500,7 +516,7 @@ class CameraAnnotation(QWidget):
 
             # Also save in specific subdirectory
             subdir = "continuous_capture" if annotation_type == "continuous" else "wrong_detections"
-            subdir_json_path = os.path.join(self.save_directory, subdir, f"{filename_base}.json")
+            subdir_json_path = os.path.join(self.save_directory, subdir, f"{filename_base}_annotation.json")
             with open(subdir_json_path, 'w') as f:
                 json.dump(annotation_data, f, indent=2)
 
@@ -650,8 +666,18 @@ class CameraAnnotation(QWidget):
             detections = []
             annotated_frame = frame.copy()
 
+
             if results and len(results) > 0:
                 result = results[0]
+                # if self.class_names:
+                #     # Sort class names for better usability
+                #     print("CHECK THE VALUE:!!!!!!!!!", self.class_names.values())
+                #     sorted_classes = sorted(self.class_names.values())
+                #     for idx, class_names in sorted_classes:
+                #         if idx == int(cls_id):
+                #             class_id = int(cls_id)
+                #         else:
+                #             class_id = 0
                 if hasattr(result, 'boxes') and result.boxes is not None and len(result.boxes) > 0:
                     boxes = result.boxes.xyxy.cpu().numpy()
                     confidences = result.boxes.conf.cpu().numpy()
@@ -659,14 +685,19 @@ class CameraAnnotation(QWidget):
 
                     for i, (box, conf, cls_id) in enumerate(zip(boxes, confidences, class_ids)):
                         x1, y1, x2, y2 = box.astype(int)
-                        class_name = self.class_names.get(cls_id, f"Class {cls_id}")
+                        area = (int(x2) - int(x1)) * (int(y2) - int(y1))
+                        # if target_detections in values_list:
+                        index = list(self.class_names.values()).index(self.target_class_continuous.lower())
+                        class_name = self.class_names.get(index, f"Class {index}")
+
 
                         detections.append({
+                            'cls': index,  # For compatibility
+                            'conf': float(conf),
+                            'box': [int(x1), int(y1), int(x2), int(y2)],
+                            "area": area,
                             'bbox': [int(x1), int(y1), int(x2), int(y2)],
-                            'box': [int(x1), int(y1), int(x2), int(y2)],  # Alternative format for compatibility
-                            'confidence': float(conf),
-                            'cls': int(cls_id),  # For compatibility
-                            'class_id': int(cls_id),
+                             # Alternative format for compatibility
                             'class_name': class_name
                         })
 
@@ -686,20 +717,34 @@ class CameraAnnotation(QWidget):
                         # Draw label text
                         cv2.putText(annotated_frame, label, (x1, y1 - 5),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
+            limit_text = self.capture_limit_input.text()
+            capture_limit = int(limit_text) if limit_text.isdigit() else 0
 
             # Function 1: Continuous capture for specific class
-            if self.continuous_capture and self.target_class_continuous and detections:
+            if self.continuous_capture and self.target_class_continuous and detections and (capture_limit == 0 or self.capture_count < capture_limit):
                 try:
+
                     target_detections = [det for det in detections
                                          if det['class_name'].lower() == self.target_class_continuous.lower()]
 
-                    if target_detections:
+                    detected_classes = [det['class_name'].lower() for det in detections]
+                    expected_class_lower = self.target_class_continuous.lower()
+
+                    # Check if any detection is NOT the expected class
+                    wrong_detections = [cls for cls in detected_classes if cls != expected_class_lower]
+                    self.log_message(f"Target {self.target_class_continuous.lower()}")
+                    if target_detections or wrong_detections:
+
                         if self.save_annotations(frame, detections, camera_id, "continuous",
                                                  self.target_class_continuous):
                             self.log_message(
                                 f"Saved continuous capture: {len(target_detections)} '{self.target_class_continuous}' objects detected on camera {camera_id}")
+
                         else:
                             self.log_message(f"Failed to save continuous capture for camera {camera_id}")
+                    self.capture_count += 1
+                    if self.capture_count == capture_limit:
+                        QMessageBox.information(self, "Info", "Capture limit has been reached!")
                 except Exception as e:
                     print(f"Continuous capture error: {e}")
 

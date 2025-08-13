@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QScrollArea, QGridLayout, QGroupBox, \
     QButtonGroup, QRadioButton, QComboBox
 from PyQt5.QtCore import Qt
+from annotatable_label import AnnotatableLabel
 
 
 class DetailView(QWidget):
@@ -8,9 +9,12 @@ class DetailView(QWidget):
         super().__init__()
         self.parent_annotator = parent_annotator
         self.worker = None
+        self.image_label = AnnotatableLabel()
         self.setup_ui()
 
+
     def setup_ui(self):
+        # Tab 2: Detail View
         detail_layout = QHBoxLayout()
 
         # Left panel for controls
@@ -146,10 +150,13 @@ class DetailView(QWidget):
 
         # Right panel for image display
         # self.image_label = QLabel()
-        self.right_layout = QVBoxLayout()
+        self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.setMinimumSize(800, 600)
+        self.image_label.setStyleSheet("border: 1px solid gray;")
+
+        right_layout = QVBoxLayout()
+        right_layout.addWidget(self.image_label)
 
         detail_layout.addWidget(left_widget)
-        detail_layout.addLayout(self.right_layout)
+        detail_layout.addLayout(right_layout)
         self.setLayout(detail_layout)
-
-        # tabWidget.addTab(grid_tab, "Grid View")
