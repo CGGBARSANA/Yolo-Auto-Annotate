@@ -13,6 +13,8 @@ from PyQt5.QtWidgets import (
     QCheckBox, QSlider, QSpinBox, QLineEdit, QTextEdit
 )
 from ultralytics import YOLO
+from utils import create_save_directory, save_current_annotation, save_yolo_format
+from camera_handle import detect_cameras_safe, populate_camera_combo
 
 
 class CameraAnnotation(QWidget):
@@ -38,57 +40,19 @@ class CameraAnnotation(QWidget):
         self.target_class_wrong = ""
         self.save_directory = "annotations"
 
+
         # Initialize components
         try:
-            self.create_save_directory()
-            self.detect_cameras_safe()
+            create_save_directory(self.save_directory)
+            detect_cameras_safe(self.available_cameras)
             self.load_model_settings()
             self.setup_ui()
+            self.connect_signals()
         except Exception as e:
             print(f"Initialization error: {e}")
             self.show_error_message("Initialization Error", f"Failed to initialize: {e}")
 
-    def show_error_message(self, title, message):
-        """Safely show error message"""
-        try:
-            QMessageBox.warning(self, title, message)
-        except:
-            print(f"{title}: {message}")
-
-    def create_save_directory(self):
-        """Create directory structure for saving annotations"""
-        try:
-            if not os.path.exists(self.save_directory):
-                os.makedirs(self.save_directory)
-
-            # Create subdirectories
-            subdirs = ["continuous_capture", "wrong_detections", "images", "labels", "yolo_labels"]
-            for subdir in subdirs:
-                path = os.path.join(self.save_directory, subdir)
-                if not os.path.exists(path):
-                    os.makedirs(path)
-        except Exception as e:
-            print(f"Error creating save directory: {e}")
-
-    def detect_cameras_safe(self):
-        """Safely detect cameras without crashing"""
-        self.available_cameras = []
-        try:
-            for i in range(5):  # Reduced range to prevent crashes
-                try:
-                    cap = cv2.VideoCapture(i)
-                    if cap is not None and cap.isOpened():
-                        # Test if we can read a frame
-                        ret, frame = cap.read()
-                        if ret and frame is not None:
-                            self.available_cameras.append(i)
-                    cap.release()
-                except Exception as e:
-                    print(f"Error testing camera {i}: {e}")
-                    continue
-        except Exception as e:
-            print(f"Camera detection error: {e}")
-
+    # Load Model Settings
     def load_model_settings(self):
         """Load YOLO model from settings manager"""
         try:
@@ -116,6 +80,7 @@ class CameraAnnotation(QWidget):
         except Exception as e:
             print(f"load_model_settings error: {e}")
 
+    # Setup UI
     def setup_ui(self):
         """Setup user interface with error handling"""
         try:
@@ -168,20 +133,18 @@ class CameraAnnotation(QWidget):
 
 
         self.add_button = QPushButton("Add")
-        self.add_button.clicked.connect(self.add_selected_camera)
-
         combo_layout.addWidget(self.camera_combo)
         combo_layout.addWidget(self.add_button)
         selection_layout.addLayout(combo_layout)
 
         # Refresh button
         self.refresh_button = QPushButton("Refresh Cameras")
-        self.refresh_button.clicked.connect(self.refresh_cameras)
+
         selection_layout.addWidget(self.refresh_button)
 
         camera_selection.setLayout(selection_layout)
         parent_layout.addWidget(camera_selection)
-        self.populate_camera_combo()
+        self.update_camera_combo()
 
     def setup_detection_settings(self, parent_layout):
         """Setup detection settings controls"""
@@ -190,7 +153,6 @@ class CameraAnnotation(QWidget):
 
         # Enable/disable detection
         self.detection_checkbox = QCheckBox("Enable Detection")
-        self.detection_checkbox.stateChanged.connect(self.toggle_detection)
         detection_layout.addWidget(self.detection_checkbox)
 
         # Confidence threshold
@@ -201,14 +163,13 @@ class CameraAnnotation(QWidget):
         self.conf_slider.setMinimum(10)
         self.conf_slider.setMaximum(95)
         self.conf_slider.setValue(50)
-        self.conf_slider.valueChanged.connect(self.update_confidence)
+
 
         self.conf_spinbox = QSpinBox()
         self.conf_spinbox.setMinimum(10)
         self.conf_spinbox.setMaximum(95)
         self.conf_spinbox.setValue(50)
-        self.conf_spinbox.valueChanged.connect(self.conf_slider.setValue)
-        self.conf_slider.valueChanged.connect(self.conf_spinbox.setValue)
+
 
         conf_layout.addWidget(self.conf_slider)
         conf_layout.addWidget(self.conf_spinbox)
@@ -237,7 +198,7 @@ class CameraAnnotation(QWidget):
         self.continuous_class_combo = QComboBox()
         self.continuous_class_combo.setEditable(True)
         self.populate_class_combo(self.continuous_class_combo)
-        self.continuous_class_combo.currentTextChanged.connect(self.on_continuous_class_changed)
+
         class_combo_layout.addWidget(self.continuous_class_combo)
         class_selection_layout.addLayout(class_combo_layout)
 
@@ -246,7 +207,6 @@ class CameraAnnotation(QWidget):
         custom_class_layout.addWidget(QLabel("Or enter custom:"))
         self.continuous_class_input = QLineEdit()
         self.continuous_class_input.setPlaceholderText("Enter class name (e.g., person, car)")
-        self.continuous_class_input.textChanged.connect(self.on_continuous_custom_changed)
         custom_class_layout.addWidget(self.continuous_class_input)
         class_selection_layout.addLayout(custom_class_layout)
 
@@ -268,9 +228,9 @@ class CameraAnnotation(QWidget):
 
         # Buttons
         self.start_continuous_btn = QPushButton("Start Continuous Capture")
-        self.start_continuous_btn.clicked.connect(self.start_continuous_capture)
+
         self.stop_continuous_btn = QPushButton("Stop Continuous Capture")
-        self.stop_continuous_btn.clicked.connect(self.stop_continuous_capture)
+
         self.stop_continuous_btn.setEnabled(False)
 
         continuous_buttons_layout = QHBoxLayout()
@@ -300,7 +260,7 @@ class CameraAnnotation(QWidget):
         self.wrong_class_combo = QComboBox()
         self.wrong_class_combo.setEditable(True)
         self.populate_class_combo(self.wrong_class_combo)
-        self.wrong_class_combo.currentTextChanged.connect(self.on_wrong_class_changed)
+
         class_combo_layout.addWidget(self.wrong_class_combo)
         class_selection_layout.addLayout(class_combo_layout)
 
@@ -309,7 +269,7 @@ class CameraAnnotation(QWidget):
         custom_class_layout.addWidget(QLabel("Or enter custom:"))
         self.wrong_class_input = QLineEdit()
         self.wrong_class_input.setPlaceholderText("Enter expected class name")
-        self.wrong_class_input.textChanged.connect(self.on_wrong_custom_changed)
+
         custom_class_layout.addWidget(self.wrong_class_input)
         class_selection_layout.addLayout(custom_class_layout)
 
@@ -317,9 +277,9 @@ class CameraAnnotation(QWidget):
 
         # Buttons
         self.start_wrong_detection_btn = QPushButton("Start Wrong Detection Mode")
-        self.start_wrong_detection_btn.clicked.connect(self.start_wrong_detection_mode)
+
         self.stop_wrong_detection_btn = QPushButton("Stop Wrong Detection Mode")
-        self.stop_wrong_detection_btn.clicked.connect(self.stop_wrong_detection_mode)
+
         self.stop_wrong_detection_btn.setEnabled(False)
 
         wrong_buttons_layout = QHBoxLayout()
@@ -334,41 +294,6 @@ class CameraAnnotation(QWidget):
 
         wrong_detection_group.setLayout(wrong_layout)
         parent_layout.addWidget(wrong_detection_group)
-
-    def populate_class_combo(self, combo_box):
-        """Populate combo box with model classes"""
-        try:
-            combo_box.clear()
-            combo_box.addItem("")  # Empty option for custom input
-
-            if self.class_names:
-                # Sort class names for better usability
-                print("CHECK THE VALUE:!!!!!!!!!",self.class_names.values())
-                sorted_classes = sorted(self.class_names.values())
-                for class_name in sorted_classes:
-                    combo_box.addItem(class_name)
-        except Exception as e:
-            print(f"Error populating class combo: {e}")
-
-    def on_continuous_class_changed(self, text):
-        """Handle continuous class combo selection"""
-        if text and text != self.continuous_class_input.text():
-            self.continuous_class_input.setText(text)
-
-    def on_continuous_custom_changed(self, text):
-        """Handle continuous custom class input"""
-        if text and text != self.continuous_class_combo.currentText():
-            self.continuous_class_combo.setCurrentText(text)
-
-    def on_wrong_class_changed(self, text):
-        """Handle wrong detection class combo selection"""
-        if text and text != self.wrong_class_input.text():
-            self.wrong_class_input.setText(text)
-
-    def on_wrong_custom_changed(self, text):
-        """Handle wrong detection custom class input"""
-        if text and text != self.wrong_class_combo.currentText():
-            self.wrong_class_combo.setCurrentText(text)
 
     def setup_log_display(self, parent_layout):
         """Setup log display"""
@@ -397,7 +322,7 @@ class CameraAnnotation(QWidget):
         active_layout.addWidget(self.active_cameras_list)
 
         self.remove_all_button = QPushButton("Remove All Cameras")
-        self.remove_all_button.clicked.connect(self.remove_all_cameras)
+
         self.remove_all_button.setEnabled(False)
         active_layout.addWidget(self.remove_all_button)
 
@@ -414,6 +339,57 @@ class CameraAnnotation(QWidget):
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setWidget(self.feed_container)
+
+    def connect_signals(self):
+        self.add_button.clicked.connect(self.add_selected_camera)
+        self.refresh_button.clicked.connect(self.refresh_cameras)
+        self.detection_checkbox.stateChanged.connect(self.toggle_detection)
+        self.conf_slider.valueChanged.connect(self.update_confidence)
+        self.conf_spinbox.valueChanged.connect(self.conf_slider.setValue)
+        self.conf_slider.valueChanged.connect(self.conf_spinbox.setValue)
+        self.continuous_class_combo.currentTextChanged.connect(self.on_continuous_class_changed)
+        self.continuous_class_input.textChanged.connect(self.on_continuous_custom_changed)
+        self.start_continuous_btn.clicked.connect(self.start_continuous_capture)
+        self.stop_continuous_btn.clicked.connect(self.stop_continuous_capture)
+        self.wrong_class_combo.currentTextChanged.connect(self.on_wrong_class_changed)
+        self.wrong_class_input.textChanged.connect(self.on_wrong_custom_changed)
+        self.start_wrong_detection_btn.clicked.connect(self.start_wrong_detection_mode)
+        self.stop_wrong_detection_btn.clicked.connect(self.stop_wrong_detection_mode)
+        self.remove_all_button.clicked.connect(self.remove_all_cameras)
+
+    def populate_class_combo(self, combo_box):
+        """Populate combo box with model classes"""
+        try:
+            combo_box.clear()
+            combo_box.addItem("")  # Empty option for custom input
+
+            if self.class_names:
+                # Sort class names for better usability
+                sorted_classes = sorted(self.class_names.values())
+                for class_name in sorted_classes:
+                    combo_box.addItem(class_name)
+        except Exception as e:
+            print(f"Error populating class combo: {e}")
+
+    def on_continuous_class_changed(self, text):
+        """Handle continuous class combo selection"""
+        if text and text != self.continuous_class_input.text():
+            self.continuous_class_input.setText(text)
+
+    def on_continuous_custom_changed(self, text):
+        """Handle continuous custom class input"""
+        if text and text != self.continuous_class_combo.currentText():
+            self.continuous_class_combo.setCurrentText(text)
+
+    def on_wrong_class_changed(self, text):
+        """Handle wrong detection class combo selection"""
+        if text and text != self.wrong_class_input.text():
+            self.wrong_class_input.setText(text)
+
+    def on_wrong_custom_changed(self, text):
+        """Handle wrong detection custom class input"""
+        if text and text != self.wrong_class_combo.currentText():
+            self.wrong_class_combo.setCurrentText(text)
 
     def log_message(self, message):
         """Add message to log display"""
@@ -443,51 +419,103 @@ class CameraAnnotation(QWidget):
             print(f"Error getting class ID: {e}")
             return 0
 
-    def save_yolo_format(self, detections, image_shape, filename_base, target_class):
-        """Save annotations in YOLO format"""
+    # def save_yolo_format(self, detections, image_shape, filename_base, target_class):
+    #     """Save annotations in YOLO format"""
+    #     try:
+    #         h, w = image_shape[:2]
+    #         label_file = os.path.join(self.save_directory, "yolo_labels", f"{filename_base}.txt")
+    #
+    #         with open(label_file, "w") as f:
+    #             for det in detections:
+    #                 x1, y1, x2, y2 = det["bbox"]
+    #
+    #                 # Get class ID
+    #                 if det["class_name"].lower() == target_class.lower():
+    #                     # Use the model's class ID if it matches
+    #                     cls = det["cls"]
+    #                 else:
+    #                     # Use custom class ID for the target class
+    #                     cls = self.get_class_id_for_name(target_class)
+    #
+    #                 # Convert to YOLO format (normalized)
+    #                 cx = (x1 + x2) / 2 / w
+    #                 cy = (y1 + y2) / 2 / h
+    #                 bw = (x2 - x1) / w
+    #                 bh = (y2 - y1) / h
+    #
+    #                 f.write(f"{cls} {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}\n")
+    #
+    #         return True
+    #     except Exception as e:
+    #         print(f"Error saving YOLO format: {e}")
+    #         return False
+
+    # def save_current_annotation(self, frame, detections, camera_id, annotation_type, target_class):
+    #     """Save current annotation state to JSON file"""
+    #     try:
+    #         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+    #         filename_base = f"cam{camera_id}_{timestamp}"
+    #
+    #         # Save image
+    #         image_path = os.path.join(self.save_directory, "images", f"{filename_base}.jpg")
+    #         success = cv2.imwrite(image_path, frame)
+    #         if not success:
+    #             print(f"Failed to save image: {image_path}")
+    #             return False
+    #
+    #         # Prepare selected boxes (all detections that match target class)
+    #         selected_boxes = []
+    #         box_labels = {}
+    #
+    #         for i, det in enumerate(detections):
+    #             if det["class_name"].lower() == target_class.lower():
+    #                 selected_boxes.append(i)
+    #                 box_labels[i] = target_class
+    #
+    #         annotation_data = {
+    #             "image_path": image_path,
+    #             "detections": detections,
+    #             "selected_boxes": selected_boxes,
+    #             "box_labels": box_labels,
+    #             "original_shape": frame.shape,
+    #             "timestamp": str(np.datetime64('now')),
+    #             "camera_id": camera_id,
+    #             "annotation_type": annotation_type,
+    #             "target_class": target_class,
+    #             "image_dimensions": {'width': frame.shape[1], 'height': frame.shape[0]}
+    #         }
+    #
+    #         # Save main annotation JSON
+    #         annotation_file = os.path.join(self.save_directory, "labels", f"{filename_base}.json")
+    #         with open(annotation_file, 'w') as f:
+    #             json.dump(annotation_data, f, indent=2)
+    #
+    #         # Also save in specific subdirectory
+    #         subdir = "continuous_capture" if annotation_type == "continuous" else "wrong_detections"
+    #         subdir_json_path = os.path.join(self.save_directory, subdir, f"{filename_base}_annotation.json")
+    #         with open(subdir_json_path, 'w') as f:
+    #             json.dump(annotation_data, f, indent=2)
+    #
+    #         return filename_base
+    #     except Exception as e:
+    #         print(f"Error saving annotation: {e}")
+    #         return None
+
+    def save_annotations(self, frame, detections, camera_id, target_class):
+        """Save both YOLO format and annotation JSON"""
         try:
-            h, w = image_shape[:2]
-            label_file = os.path.join(self.save_directory, "yolo_labels", f"{filename_base}.txt")
-
-            with open(label_file, "w") as f:
-                for det in detections:
-                    x1, y1, x2, y2 = det["bbox"]
-
-                    # Get class ID
-                    if det["class_name"].lower() == target_class.lower():
-                        # Use the model's class ID if it matches
-                        cls = det["cls"]
-                    else:
-                        # Use custom class ID for the target class
-                        cls = self.get_class_id_for_name(target_class)
-
-                    # Convert to YOLO format (normalized)
-                    cx = (x1 + x2) / 2 / w
-                    cy = (y1 + y2) / 2 / h
-                    bw = (x2 - x1) / w
-                    bh = (y2 - y1) / h
-
-                    f.write(f"{cls} {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}\n")
-
-            return True
-        except Exception as e:
-            print(f"Error saving YOLO format: {e}")
-            return False
-
-    def save_current_annotation(self, frame, detections, camera_id, annotation_type, target_class):
-        """Save current annotation state to JSON file"""
-        try:
+            if not detections:
+                return False
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-            filename_base = f"cam{camera_id}_{timestamp}"
+            file_name = f"cam{camera_id}_{timestamp}"
 
             # Save image
-            image_path = os.path.join(self.save_directory, "images", f"{filename_base}.jpg")
+            image_path = os.path.join(self.save_directory, "images", f"{file_name}.jpg")
             success = cv2.imwrite(image_path, frame)
             if not success:
                 print(f"Failed to save image: {image_path}")
                 return False
 
-            # Prepare selected boxes (all detections that match target class)
             selected_boxes = []
             box_labels = {}
 
@@ -495,54 +523,29 @@ class CameraAnnotation(QWidget):
                 if det["class_name"].lower() == target_class.lower():
                     selected_boxes.append(i)
                     box_labels[i] = target_class
-
-            annotation_data = {
-                "image_path": image_path,
-                "detections": detections,
-                "selected_boxes": selected_boxes,
-                "box_labels": box_labels,
-                "original_shape": frame.shape,
-                "timestamp": str(np.datetime64('now')),
-                "camera_id": camera_id,
-                "annotation_type": annotation_type,
-                "target_class": target_class,
-                "image_dimensions": {'width': frame.shape[1], 'height': frame.shape[0]}
-            }
-
-            # Save main annotation JSON
-            annotation_file = os.path.join(self.save_directory, "labels", f"{filename_base}.json")
-            with open(annotation_file, 'w') as f:
-                json.dump(annotation_data, f, indent=2)
-
-            # Also save in specific subdirectory
-            subdir = "continuous_capture" if annotation_type == "continuous" else "wrong_detections"
-            subdir_json_path = os.path.join(self.save_directory, subdir, f"{filename_base}_annotation.json")
-            with open(subdir_json_path, 'w') as f:
-                json.dump(annotation_data, f, indent=2)
-
-            return filename_base
-        except Exception as e:
-            print(f"Error saving annotation: {e}")
-            return None
-
-    def save_annotations(self, frame, detections, camera_id, annotation_type, target_class):
-        """Save both YOLO format and annotation JSON"""
-        try:
-            if not detections:
+            if not file_name:
                 return False
 
             # Save annotation JSON and get filename
-            filename_base = self.save_current_annotation(frame, detections, camera_id, annotation_type, target_class)
-            if not filename_base:
-                return False
+            save_current_annotation(image_path, detections, selected_boxes, box_labels, frame.shape, self.save_directory, file_name, sub_folder="")
+            # Save main annotation JSON
+
 
             # Save YOLO format
-            success = self.save_yolo_format(detections, frame.shape, filename_base, target_class)
+            success = save_yolo_format(detections=detections, image_shape=frame.shape, directory=self.save_directory, filename_base=file_name)
 
             return success
         except Exception as e:
             print(f"Error saving annotations: {e}")
             return False
+
+    def update_camera_combo(self):
+        populate_camera_combo(
+            self.camera_combo,
+            self.available_cameras,
+            self.add_button,
+            self.active_cameras
+        )
 
     def start_continuous_capture(self):
         """Function 1: Start continuous capture for specific class"""
@@ -735,7 +738,7 @@ class CameraAnnotation(QWidget):
                     self.log_message(f"Target {self.target_class_continuous.lower()}")
                     if target_detections or wrong_detections:
 
-                        if self.save_annotations(frame, detections, camera_id, "continuous",
+                        if self.save_annotations(frame, detections, camera_id,
                                                  self.target_class_continuous):
                             self.log_message(
                                 f"Saved continuous capture: {len(target_detections)} '{self.target_class_continuous}' objects detected on camera {camera_id}")
@@ -757,7 +760,7 @@ class CameraAnnotation(QWidget):
                     # Check if any detection is NOT the expected class
                     wrong_detections = [cls for cls in detected_classes if cls != expected_class_lower]
                     if wrong_detections and detected_classes:  # Only save if there are detections
-                        if self.save_annotations(frame, detections, camera_id, "wrong_detection",
+                        if self.save_annotations(frame, detections, camera_id,
                                                  self.target_class_wrong):
                             wrong_classes_str = ", ".join(set(wrong_detections))
                             self.log_message(
@@ -773,30 +776,34 @@ class CameraAnnotation(QWidget):
             print(f"Detection error: {e}")
             return frame, []
 
-    def populate_camera_combo(self):
-        """Populate combo box with available cameras"""
-        try:
-            self.camera_combo.clear()
-            if not self.available_cameras:
-                self.camera_combo.addItem("No cameras detected")
-                self.add_button.setEnabled(False)
-            else:
-                available_to_add = [cam_id for cam_id in self.available_cameras if cam_id not in self.active_cameras]
-                if not available_to_add:
-                    self.camera_combo.addItem("All cameras in use")
-                    self.add_button.setEnabled(False)
-                else:
-                    for cam_id in available_to_add:
-                        self.camera_combo.addItem(f"Camera {cam_id}", cam_id)
-                    self.add_button.setEnabled(True)
-        except Exception as e:
-            print(f"populate_camera_combo error: {e}")
+
+
+    # def populate_camera_combo(self):
+    #     """Populate combo box with available cameras"""
+    #     try:
+    #         self.camera_combo.clear()
+    #         if not self.available_cameras:
+    #             self.camera_combo.addItem("No cameras detected")
+    #             self.add_button.setEnabled(False)
+    #         else:
+    #             available_to_add = [cam_id for cam_id in self.available_cameras if cam_id not in self.active_cameras]
+    #             if not available_to_add:
+    #                 self.camera_combo.addItem("All cameras in use")
+    #                 self.add_button.setEnabled(False)
+    #             else:
+    #                 for cam_id in available_to_add:
+    #                     self.camera_combo.addItem(f"Camera {cam_id}", cam_id)
+    #                 self.add_button.setEnabled(True)
+    #     except Exception as e:
+    #         print(f"populate_camera_combo error: {e}")
+
 
     def refresh_cameras(self):
         """Refresh the list of available cameras"""
         try:
-            self.detect_cameras_safe()
-            self.populate_camera_combo()
+            self.remove_all_cameras()
+            detect_cameras_safe(self.available_cameras)
+            self.update_camera_combo()
             self.camera_status.setText(f"Found {len(self.available_cameras)} cameras")
         except Exception as e:
             print(f"refresh_cameras error: {e}")
@@ -857,7 +864,7 @@ class CameraAnnotation(QWidget):
             detection_info.setAlignment(Qt.AlignCenter)
 
             remove_button = QPushButton("Remove")
-            remove_button.clicked.connect(lambda: self.remove_camera(cam_id))
+
 
             feed_layout.addWidget(title_label)
             feed_layout.addWidget(video_label)
@@ -879,13 +886,14 @@ class CameraAnnotation(QWidget):
 
             # Setup timer
             timer = QTimer(self)
+            remove_button.clicked.connect(lambda: self.remove_camera(cam_id))
             timer.timeout.connect(lambda: self.update_frame(cam_id))
             timer.start(50)  # 20 FPS to reduce load
             self.timers[cam_id] = timer
 
             self.camera_status.setText(f"Camera {cam_id} started ({len(self.active_cameras)} total)")
             self.update_active_cameras_display()
-            self.populate_camera_combo()
+            self.update_camera_combo()
             self.remove_all_button.setEnabled(True)
 
         except Exception as e:
@@ -913,8 +921,7 @@ class CameraAnnotation(QWidget):
             self.camera_status.setText(f"Camera {cam_id} removed ({len(self.active_cameras)} remaining)")
             self.reorganize_grid()
             self.update_active_cameras_display()
-            self.populate_camera_combo()
-
+            self.update_camera_combo()
             if len(self.active_cameras) == 0:
                 self.remove_all_button.setEnabled(False)
 
@@ -1046,3 +1053,9 @@ class CameraAnnotation(QWidget):
             print(f"closeEvent error: {e}")
             event.accept()
 
+    def show_error_message(self, title, message):
+        """Safely show error message"""
+        try:
+            QMessageBox.warning(self, title, message)
+        except:
+            print(f"{title}: {message}")

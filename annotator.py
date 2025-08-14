@@ -23,6 +23,7 @@ from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from annotatable_label import AnnotatableLabel
 from tabs.grid_view import GridView
 from tabs.detail_view import DetailView
+from utils import save_current_annotation
 
 
 class Annotator(QWidget):
@@ -60,7 +61,6 @@ class Annotator(QWidget):
         else:
             self.initialize_ui()
             self.initialize_auto_suggest()
-
 
     def reset_manual_annotation_fnc(self):
         self.detail_view.image_label.clear_boxes()
@@ -808,9 +808,9 @@ class Annotator(QWidget):
         if self.image_paths:
             status_text = f"Image {self.current_index + 1} of {len(self.image_paths)}"
             if self.has_unsaved_changes:
-                status_text += " (Modified)"
+                status_text += "(Modified)"
             elif self.has_saved_annotation(self.current_index):
-                status_text += " (Saved)"
+                status_text += "(Saved)"
             self.detail_view.status_label.setText(status_text)
         self.detail_view.selection_count_label.setText(f"Selected: {len(self.selected_boxes)} / {len(self.detections)}")
 
@@ -821,7 +821,10 @@ class Annotator(QWidget):
 
         # Save both YOLO format and annotation JSON
         self.save_yolo_format()
-        self.save_current_annotation()
+        file_name = self.get_annotation_filename()
+        save_current_annotation(self.image_paths[self.current_index], self.detections,
+                                list(self.selected_boxes), self.box_labels, self.original_shape, self.annotation_save_dir,
+                                file_name, self.class_selection_mode, sub_folder="")
         self.has_unsaved_changes = False
 
         # Mark image as annotated and update thumbnails
