@@ -15,13 +15,16 @@ class GridView(QWidget):
 
         # Grid controls
         grid_controls = QHBoxLayout()
-        self.add_images_btn = QPushButton("Add Images")
+        self.add_images_btn = QPushButton("Import images")
         grid_controls.addWidget(self.add_images_btn)
         grid_controls.addStretch()
         grid_layout.addLayout(grid_controls)
 
-        self.remove_all_btn = QPushButton("Remove All Images")
+        self.remove_all_btn = QPushButton("Remove all images")
         grid_controls.addWidget(self.remove_all_btn)
+
+        self.export_annotations_btn = QPushButton("Export all annotations")
+        grid_controls.addWidget(self.export_annotations_btn)
         separator = QLabel("|")
         separator.setStyleSheet("color: gray; font-weight: bold;")
         grid_controls.addWidget(separator)

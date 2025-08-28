@@ -1,6 +1,4 @@
 import os
-import datetime
-import cv2
 import numpy as np
 import json
 
@@ -95,7 +93,6 @@ def save_current_annotation(image_path, detections, selected_boxes, box_labels, 
         print(f"Error saving annotation: {e}")
         return False
 
-
 # def get_annotation_filename(image_index=None):
 #     """Get the annotation filename for current or specified image"""
 #     if image_index is None:
@@ -104,7 +101,6 @@ def save_current_annotation(image_path, detections, selected_boxes, box_labels, 
 #     img_path = self.image_paths[image_index]
 #     img_name = os.path.splitext(os.path.basename(img_path))[0]
 #     return os.path.join(self.annotation_save_dir, f"{img_name}_annotation.json")
-
 
 
 def create_save_directory(save_directory):

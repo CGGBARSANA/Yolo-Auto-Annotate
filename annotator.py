@@ -242,7 +242,6 @@ class Annotator(QWidget):
         except ValueError as e:
             QMessageBox.warning(self, "Error", str(e))
 
-
     # Method to initialize auto-suggest in your existing setup
     def initialize_auto_suggest(self):
         """
@@ -284,6 +283,7 @@ class Annotator(QWidget):
         except Exception as e:
             QMessageBox.critical(None, "Error", f"Error loading settings: {e}")
             return False
+
     def show_settings_dialog(self):
         """Show settings configuration dialog"""
         current_settings = self.settings_manager.load_settings()
@@ -291,6 +291,7 @@ class Annotator(QWidget):
         self.settings_dialog = SettingsDialog(current_settings)
         self.settings_dialog.settings_saved.connect(self.on_settings_saved)
         self.settings_dialog.show()
+
 
     def on_settings_saved(self, settings):
         """Handle settings saved event"""
@@ -303,6 +304,7 @@ class Annotator(QWidget):
                 QMessageBox.critical(self, "Error", "Failed to apply new settings.")
         else:
             QMessageBox.critical(self, "Error", "Failed to save settings.")
+
 
     def check_albumentations_dependency(self):
         """Check if albumentations is installed"""
@@ -332,6 +334,7 @@ class Annotator(QWidget):
         self.connect_signals()
         self.show()
 
+
     def populate_label_combo(self):
         """Populate combo box with available labels based on selection mode"""
         self.detail_view.label_combo.clear()
@@ -354,12 +357,14 @@ class Annotator(QWidget):
             for label_name in self.custom_label_manager.get_custom_labels_list():
                 self.detail_view.label_combo.addItem(label_name)
 
+
     def setup_settings_button(self, parent_layout):
         settings_layout = QHBoxLayout()
         self.settings_btn = QPushButton("Settings")
         settings_layout.addWidget(self.settings_btn)
         settings_layout.addStretch()
         parent_layout.addLayout(settings_layout)
+
 
     def setup_ui(self):
         main_layout = QVBoxLayout()
@@ -374,6 +379,7 @@ class Annotator(QWidget):
         self.grid_view = GridView(self)
         self.tab_widget.addTab(self.grid_view, "Grid view")
 
+
         # Detail View Tab
         self.detail_view = DetailView(self)
         self.tab_widget.addTab(self.detail_view, "Detail view")
@@ -385,6 +391,7 @@ class Annotator(QWidget):
         # Camera Annotation Tab
         self.camera_annotation = CameraAnnotation(self)
         self.tab_widget.addTab(self.camera_annotation, "Camera Capture Annotation")
+        self.tab_widget.currentChanged.connect(self.auto_save_current_annotation)
 
 
         # Set default selection
@@ -398,6 +405,7 @@ class Annotator(QWidget):
         # Add tab widget to main layout
         main_layout.addWidget(self.tab_widget)
         self.setLayout(main_layout)
+
 
     def on_class_mode_changed(self):
         """Handle class selection mode change"""
@@ -425,7 +433,6 @@ class Annotator(QWidget):
             self.detail_view.label_combo.setPlaceholderText("Select or enter label")
 
 
-
     def connect_signals(self):
         # self.load_btn.clicked.connect(self.load_images)
         self.settings_btn.clicked.connect(self.show_settings_dialog)
@@ -434,7 +441,7 @@ class Annotator(QWidget):
         self.grid_view.remove_selected_btn.clicked.connect(self.remove_selected_images)
         self.grid_view.add_images_btn.clicked.connect(self.add_images)
         self.grid_view.remove_all_btn.clicked.connect(self.remove_all_images)
-
+        self.grid_view.export_annotations_btn.clicked.connect(self.export_annotations)
         self.detail_view.next_btn.clicked.connect(self.show_next_image)
         self.detail_view.prev_btn.clicked.connect(self.show_prev_image)
         self.detail_view.save_btn.clicked.connect(self.save_annotations)
@@ -447,7 +454,6 @@ class Annotator(QWidget):
         self.detail_view.remove_selected_annotation_btn.clicked.connect(self.remove_annotation)
         self.detail_view.auto_save_btn.clicked.connect(self.toggle_auto_save)
         self.detail_view.clear_session_btn.clicked.connect(self.clear_all_annotations)
-        self.detail_view.export_annotations_btn.clicked.connect(self.export_annotations)
         self.detail_view.image_label.mousePressEvent = self.handle_click
         self.detail_view.manage_labels_btn.clicked.connect(self.show_label_management_dialog)
         self.detail_view.refresh_labels_btn.clicked.connect(self.populate_label_combo_with_autosuggest)
@@ -559,6 +565,7 @@ class Annotator(QWidget):
                 self.detections.sort(key=lambda x: x["area"], reverse=True)
                 # Refresh display and status
                 self.display_image()
+                self.update_thumbnail_states()
                 self.update_status()
 
                 print(f"Added {len(self.detail_view.image_label.boxes)} manual annotations")

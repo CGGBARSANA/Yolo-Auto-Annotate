@@ -139,10 +139,9 @@ class DetailView(QWidget):
         session_layout = QVBoxLayout()
 
         self.clear_session_btn = QPushButton("Clear All Annotations")
-        self.export_annotations_btn = QPushButton("Export Annotations")
 
         session_layout.addWidget(self.clear_session_btn)
-        session_layout.addWidget(self.export_annotations_btn)
+        # session_layout.addWidget(self.export_annotations_btn)
         session_group.setLayout(session_layout)
         left_panel.addWidget(session_group)
 
