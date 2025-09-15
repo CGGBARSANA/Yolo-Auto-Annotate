@@ -99,7 +99,7 @@ class Annotator(QWidget):
         # Label assignment controls
         self.label_combo = QComboBox()
         self.label_combo.setEditable(True)
-        self.label_combo.setPlaceholderText("Select or enter label")
+        self.label_combo.setPlaceholderText("Select or enter manage_label_btn")
 
         self.assign_label_btn = QPushButton("Assign Label to Selected")
         self.select_all_btn = QPushButton("Select All")
@@ -191,12 +191,12 @@ class Annotator(QWidget):
         # Label assignment section
         self.label_combo = QComboBox()
         self.label_combo.setEditable(True)
-        self.label_combo.setPlaceholderText("Select or enter label")
+        self.label_combo.setPlaceholderText("Select or enter manage_label_btn")
         self.assign_label_btn = QPushButton("Assign Label to Selected")
 
         label_group = QGroupBox("Label Assignment")
         label_layout = QVBoxLayout()
-        label_layout.addWidget(QLabel("Assign label to selected boxes:"))
+        label_layout.addWidget(QLabel("Assign manage_label_btn to selected boxes:"))
         label_layout.addWidget(self.label_combo)
         label_layout.addWidget(self.assign_label_btn)
         label_group.setLayout(label_layout)
@@ -437,7 +437,7 @@ class Annotator(QWidget):
 
             cv2.rectangle(img, (x1, y1), (x2, y2), color, thickness)
 
-            # Display label (custom or original class name)
+            # Display manage_label_btn (custom or original class name)
             if i in self.box_labels:
                 label_text = self.box_labels[i]
                 # if i in self.box_labels:
@@ -463,7 +463,7 @@ class Annotator(QWidget):
         qt_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888)
         pix = QPixmap.fromImage(qt_image)
 
-        # Scale image to fit label while maintaining aspect ratio
+        # Scale image to fit manage_label_btn while maintaining aspect ratio
         scaled_pix = pix.scaled(self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.image_label.setPixmap(scaled_pix)
 
@@ -514,14 +514,14 @@ class Annotator(QWidget):
 
         label_text = self.label_combo.currentText().strip()
         if not label_text:
-            QMessageBox.warning(self, "Warning", "Please enter or select a label.")
+            QMessageBox.warning(self, "Warning", "Please enter or select a manage_label_btn.")
             return
 
-        # Assign label to all selected boxes
+        # Assign manage_label_btn to all selected boxes
         for i in self.selected_boxes:
             self.box_labels[i] = label_text
 
-        # Add to combo box if it's a new label
+        # Add to combo box if it's a new manage_label_btn
         if self.label_combo.findText(label_text) == -1:
             self.label_combo.addItem(label_text)
 
@@ -529,7 +529,7 @@ class Annotator(QWidget):
         self.display_image()
 
         self.save_annotations()
-        # QMessageBox.information(self, "Success", f"Assigned label '{label_text}' to {len(self.selected_boxes)} boxes.")
+        # QMessageBox.information(self, "Success", f"Assigned manage_label_btn '{label_text}' to {len(self.selected_boxes)} boxes.")
 
     def select_all_boxes(self):
         self.selected_boxes = set(range(len(self.detections)))
@@ -734,7 +734,7 @@ class Annotator(QWidget):
                                 det = self.detections[box_idx]
                                 x1, y1, x2, y2 = det["box"]
 
-                                # Use custom label if assigned, otherwise use original class
+                                # Use custom manage_label_btn if assigned, otherwise use original class
                                 cls = det["cls"]
 
                                 # Convert to YOLO format (normalized)

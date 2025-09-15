@@ -1,0 +1,2 @@
+from.settings_dialog import SettingsDialog
+from.settings_manager import SettingsManager
